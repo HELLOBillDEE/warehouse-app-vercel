@@ -364,16 +364,25 @@
             );
         }
 
+        const UNASSIGNED = '__unassigned__';
+
         function BulkTransfer({ products, locations, stock, loadData, msg, msgType, flash }) {
             const [fromLoc, setFromLoc] = useState('');
             const [toLoc, setToLoc] = useState('');
             const [sel, setSel] = useState({});
             const [notes, setNotes] = useState('');
+            const [search, setSearch] = useState('');
+            const isUnassigned = fromLoc === UNASSIGNED;
 
-            const rows = stock
-                .filter(s => s.location_id === fromLoc && parseFloat(s.quantity) > 0)
-                .map(s => ({ ...s, product: products.find(p => p.id === s.product_id) }))
-                .filter(r => r.product);
+            const stockedProductIds = new Set(stock.filter(s => parseFloat(s.quantity) > 0).map(s => s.product_id));
+            const matchesSearch = (p) => !search || p.product_code?.includes(search.toUpperCase()) || p.name?.includes(search);
+
+            const rows = isUnassigned
+                ? products.filter(p => !stockedProductIds.has(p.id)).filter(matchesSearch).slice(0, 100)
+                    .map(p => ({ id: p.id, product_id: p.id, quantity: '', product: p }))
+                : stock.filter(s => s.location_id === fromLoc && parseFloat(s.quantity) > 0)
+                    .map(s => ({ ...s, product: products.find(p => p.id === s.product_id) }))
+                    .filter(r => r.product && matchesSearch(r.product));
 
             const toggleAll = (checked) => {
                 const next = {};
@@ -393,25 +402,33 @@
                 if (!fromLoc || !toLoc) { flash('เลือกต้นทางและปลายทาง'); return; }
                 if (fromLoc === toLoc) { flash('ต้นทางและปลายทางต้องไม่ใช่ที่เดียวกัน'); return; }
                 const chosen = rows.filter(r => sel[r.id]?.checked && parseFloat(sel[r.id]?.qty) > 0);
-                if (chosen.length === 0) { flash('เลือกสินค้าอย่างน้อย 1 รายการ'); return; }
-                for (const r of chosen) {
-                    if (parseFloat(sel[r.id].qty) > parseFloat(r.quantity)) { flash('จำนวนที่ย้ายของ ' + r.product.name + ' เกินจำนวนที่มี'); return; }
+                if (chosen.length === 0) { flash('เลือกสินค้าอย่างน้อย 1 รายการ และระบุจำนวน'); return; }
+                if (!isUnassigned) {
+                    for (const r of chosen) {
+                        if (parseFloat(sel[r.id].qty) > parseFloat(r.quantity)) { flash('จำนวนที่ย้ายของ ' + r.product.name + ' เกินจำนวนที่มี'); return; }
+                    }
                 }
                 try {
                     for (const r of chosen) {
                         const q = parseFloat(sel[r.id].qty);
-                        const remaining = parseFloat(r.quantity) - q;
-                        await client.from('product_location_stock').update({ quantity: remaining, updated_at: new Date().toISOString() }).eq('id', r.id);
+                        if (!isUnassigned) {
+                            const remaining = parseFloat(r.quantity) - q;
+                            await client.from('product_location_stock').update({ quantity: remaining, updated_at: new Date().toISOString() }).eq('id', r.id);
+                        }
                         const dest = stock.find(s => s.product_id === r.product_id && s.location_id === toLoc);
                         if (dest) {
                             await client.from('product_location_stock').update({ quantity: parseFloat(dest.quantity) + q, updated_at: new Date().toISOString() }).eq('id', dest.id);
                         } else {
                             await client.from('product_location_stock').insert([{ product_id: r.product_id, location_id: toLoc, quantity: q }]);
                         }
-                        await client.from('stock_movements').insert([{ product_id: r.product_id, location_id: fromLoc, quantity_change: -q, movement_type: 'transfer', notes }]);
-                        await client.from('stock_movements').insert([{ product_id: r.product_id, location_id: toLoc, quantity_change: q, movement_type: 'transfer', notes }]);
+                        if (isUnassigned) {
+                            await client.from('stock_movements').insert([{ product_id: r.product_id, location_id: toLoc, quantity_change: q, movement_type: 'receiving', notes: notes || 'กำหนดคลังเริ่มต้น' }]);
+                        } else {
+                            await client.from('stock_movements').insert([{ product_id: r.product_id, location_id: fromLoc, quantity_change: -q, movement_type: 'transfer', notes }]);
+                            await client.from('stock_movements').insert([{ product_id: r.product_id, location_id: toLoc, quantity_change: q, movement_type: 'transfer', notes }]);
+                        }
                     }
-                    flash('ย้ายคลังสำเร็จ (' + chosen.length + ' รายการ)', 'success');
+                    flash('บันทึกสำเร็จ (' + chosen.length + ' รายการ)', 'success');
                     setSel({}); setNotes('');
                     await loadData();
                 } catch (err) {
@@ -428,8 +445,9 @@
                     <div className="grid-2">
                         <div className="form-group">
                             <label>ต้นทาง</label>
-                            <select value={fromLoc} onChange={(e) => { setFromLoc(e.target.value); setSel({}); }}>
+                            <select value={fromLoc} onChange={(e) => { setFromLoc(e.target.value); setSel({}); setSearch(''); }}>
                                 <option value="">-- เลือก --</option>
+                                <option value={UNASSIGNED}>ยังไม่ระบุคลัง</option>
                                 {locations.map(l => (<option key={l.id} value={l.id}>{l.name}</option>))}
                             </select>
                         </div>
@@ -443,6 +461,10 @@
                     </div>
                     {fromLoc && (
                         <div>
+                            <div className="form-group">
+                                <label>ค้นหาสินค้า</label>
+                                <input type="text" placeholder="รหัส/ชื่อ" value={search} onChange={(e) => setSearch(e.target.value)} />
+                            </div>
                             <div className="row-actions" style={{marginBottom: '10px'}}>
                                 <button className="small secondary" onClick={() => toggleAll(true)}>เลือกทั้งหมด</button>
                                 <button className="small secondary" onClick={() => toggleAll(false)}>ยกเลิกทั้งหมด</button>
@@ -455,13 +477,14 @@
                                         <tr key={r.id}>
                                             <td><input type="checkbox" style={{width: 'auto'}} checked={!!sel[r.id]?.checked} onChange={(e) => toggleRow(r, e.target.checked)} /></td>
                                             <td>{r.product.product_code} - {r.product.name}</td>
-                                            <td>{r.quantity} {r.product.unit}</td>
-                                            <td><input type="number" min="0" max={r.quantity} value={sel[r.id]?.qty ?? r.quantity} onChange={(e) => setQty(r, e.target.value)} disabled={!sel[r.id]?.checked} /></td>
+                                            <td>{isUnassigned ? '-' : r.quantity + ' ' + (r.product.unit || '')}</td>
+                                            <td><input type="number" min="0" max={isUnassigned ? undefined : r.quantity} value={sel[r.id]?.qty ?? r.quantity} onChange={(e) => setQty(r, e.target.value)} disabled={!sel[r.id]?.checked} /></td>
                                         </tr>
                                     ))}
                                 </tbody>
                             </table>
-                            {rows.length === 0 && <div style={{color: '#999', padding: '10px'}}>ที่อยู่นี้ไม่มีสต็อก</div>}
+                            {rows.length === 0 && <div style={{color: '#999', padding: '10px'}}>{isUnassigned ? 'ไม่พบสินค้าที่ยังไม่ระบุคลัง' : 'ที่อยู่นี้ไม่มีสต็อก'}</div>}
+                            {isUnassigned && rows.length === 100 && <div style={{fontSize: '11px', color: '#999', marginTop: '5px'}}>แสดง 100 รายการแรก ใช้ช่องค้นหาเพื่อดูรายการอื่น</div>}
                         </div>
                     )}
                     <div className="form-group" style={{marginTop: '15px'}}>
