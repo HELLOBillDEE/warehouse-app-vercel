@@ -124,9 +124,9 @@
                 setLoading(true);
                 try {
                     const [productsRes, locationsRes, stockRes] = await Promise.all([
-                        supabaseClient.from('products').select('*').limit(3000),
+                        supabaseClient.from('products').select('*').limit(10000),
                         supabaseClient.from('storage_locations').select('*'),
-                        supabaseClient.from('product_location_stock').select('*')
+                        supabaseClient.from('product_location_stock').select('*').limit(10000)
                     ]);
                     setProducts(productsRes.data || []);
                     setLocations(locationsRes.data || []);
