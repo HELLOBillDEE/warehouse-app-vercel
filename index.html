@@ -103,26 +103,41 @@
         function Receiving({ products, locations, stock, loadData, msg, msgType, flash }) {
             const [pid, setPid] = useState('');
             const [pLabel, setPLabel] = useState('');
-            const [lid, setLid] = useState('');
-            const [qty, setQty] = useState('');
-            const [notes, setNotes] = useState('');
             const [search, setSearch] = useState('');
+            const [notes, setNotes] = useState('');
+            const [rows, setRows] = useState([{ lid: '', qty: '' }]);
             const filtered = products.filter(p => p.product_code?.includes(search.toUpperCase()) || p.name?.includes(search)).slice(0, 20);
+            const product = products.find(p => p.id === pid);
+
+            const setRow = (i, patch) => setRows(rows.map((r, idx) => idx === i ? { ...r, ...patch } : r));
+            const addRow = () => setRows([...rows, { lid: '', qty: '' }]);
+            const removeRow = (i) => setRows(rows.filter((_, idx) => idx !== i));
 
             const handle = async () => {
-                if (!pid || !lid || !qty || parseFloat(qty) <= 0) { flash('กรอกข้อมูลให้ครบและจำนวนต้องมากกว่า 0'); return; }
+                const validRows = rows.filter(r => r.lid && r.qty && parseFloat(r.qty) > 0);
+                if (!pid || validRows.length === 0) { flash('เลือกสินค้าและกรอกที่อยู่กับจำนวนอย่างน้อย 1 แถว'); return; }
                 try {
-                    const q = parseFloat(qty);
-                    await client.from('receiving_logs').insert([{ product_id: pid, location_id: lid, quantity: q, notes }]);
-                    const s = stock.find(x => x.product_id === pid && x.location_id === lid);
-                    if (s) {
-                        await client.from('product_location_stock').update({ quantity: parseFloat(s.quantity) + q, updated_at: new Date().toISOString() }).eq('id', s.id);
-                    } else {
-                        await client.from('product_location_stock').insert([{ product_id: pid, location_id: lid, quantity: q }]);
+                    const runningQty = {};
+                    const rowIdByLoc = {};
+                    for (const r of validRows) {
+                        const q = parseFloat(r.qty);
+                        await client.from('receiving_logs').insert([{ product_id: pid, location_id: r.lid, quantity: q, notes }]);
+                        if (!(r.lid in runningQty)) {
+                            const s = stock.find(x => x.product_id === pid && x.location_id === r.lid);
+                            runningQty[r.lid] = s ? parseFloat(s.quantity) : 0;
+                            if (s) rowIdByLoc[r.lid] = s.id;
+                        }
+                        runningQty[r.lid] += q;
+                        if (rowIdByLoc[r.lid]) {
+                            await client.from('product_location_stock').update({ quantity: runningQty[r.lid], updated_at: new Date().toISOString() }).eq('id', rowIdByLoc[r.lid]);
+                        } else {
+                            const { data } = await client.from('product_location_stock').insert([{ product_id: pid, location_id: r.lid, quantity: runningQty[r.lid] }]).select('id');
+                            if (data && data[0]) rowIdByLoc[r.lid] = data[0].id;
+                        }
+                        await client.from('stock_movements').insert([{ product_id: pid, location_id: r.lid, quantity_change: q, movement_type: 'receiving', notes }]);
                     }
-                    await client.from('stock_movements').insert([{ product_id: pid, location_id: lid, quantity_change: q, movement_type: 'receiving', notes }]);
                     flash('บันทึกรับเข้าสำเร็จ', 'success');
-                    setPid(''); setPLabel(''); setLid(''); setQty(''); setSearch(''); setNotes('');
+                    setPid(''); setPLabel(''); setSearch(''); setNotes(''); setRows([{ lid: '', qty: '' }]);
                     await loadData();
                 } catch (err) {
                     flash('Error: ' + err.message, 'error');
@@ -133,31 +148,36 @@
                 <div>
                     <h2>รับเข้าสินค้า</h2>
                     {msg && <div className={'alert alert-' + msgType}>{msg}</div>}
-                    <div className="grid-2">
-                        <div className="form-group">
-                            <label>ค้นหาสินค้า</label>
-                            <input type="text" placeholder="รหัส/ชื่อ" value={pLabel || search} onChange={(e) => { setSearch(e.target.value); setPLabel(''); setPid(''); }} />
-                            {search && !pid && (<div className="search-results">
-                                {filtered.map(p => (<div key={p.id} className="search-result-item" onClick={() => { setPid(p.id); setPLabel(p.product_code + ' - ' + p.name); setSearch(''); }}>{p.product_code} - {p.name}</div>))}
-                            </div>)}
-                        </div>
-                        <div className="form-group">
-                            <label>ที่อยู่คลัง</label>
-                            <select value={lid} onChange={(e) => setLid(e.target.value)}>
-                                <option value="">-- เลือก --</option>
-                                {locations.map(l => (<option key={l.id} value={l.id}>{l.name}</option>))}
-                            </select>
-                        </div>
+                    <div className="form-group">
+                        <label>ค้นหาสินค้า</label>
+                        <input type="text" placeholder="รหัส/ชื่อ" value={pLabel || search} onChange={(e) => { setSearch(e.target.value); setPLabel(''); setPid(''); }} />
+                        {search && !pid && (<div className="search-results">
+                            {filtered.map(p => (<div key={p.id} className="search-result-item" onClick={() => { setPid(p.id); setPLabel(p.product_code + ' - ' + p.name); setSearch(''); }}>{p.product_code} - {p.name} {p.unit ? '(' + p.unit + ')' : ''}</div>))}
+                        </div>)}
+                        {product && <div style={{fontSize: '12px', color: '#666', marginTop: '5px'}}>หน่วย: {product.unit || '-'}</div>}
                     </div>
-                    <div className="grid-2">
-                        <div className="form-group">
-                            <label>จำนวน</label>
-                            <input type="number" min="1" value={qty} onChange={(e) => setQty(e.target.value)} />
+                    {rows.map((r, i) => (
+                        <div className="grid-3" key={i} style={{alignItems: 'end'}}>
+                            <div className="form-group">
+                                <label>ที่อยู่คลัง</label>
+                                <select value={r.lid} onChange={(e) => setRow(i, { lid: e.target.value })}>
+                                    <option value="">-- เลือก --</option>
+                                    {locations.map(l => (<option key={l.id} value={l.id}>{l.name}</option>))}
+                                </select>
+                            </div>
+                            <div className="form-group">
+                                <label>จำนวน{product?.unit ? ' (' + product.unit + ')' : ''}</label>
+                                <input type="number" min="1" value={r.qty} onChange={(e) => setRow(i, { qty: e.target.value })} />
+                            </div>
+                            <div className="form-group">
+                                {rows.length > 1 && <button className="secondary" onClick={() => removeRow(i)}>ลบแถว</button>}
+                            </div>
                         </div>
-                        <div className="form-group">
-                            <label>หมายเหตุ</label>
-                            <input type="text" value={notes} onChange={(e) => setNotes(e.target.value)} />
-                        </div>
+                    ))}
+                    <button className="secondary small" onClick={addRow} style={{marginBottom: '15px'}}>+ เพิ่มที่อยู่</button>
+                    <div className="form-group">
+                        <label>หมายเหตุ</label>
+                        <input type="text" value={notes} onChange={(e) => setNotes(e.target.value)} />
                     </div>
                     <button onClick={handle}>บันทึกรับเข้า</button>
                 </div>
