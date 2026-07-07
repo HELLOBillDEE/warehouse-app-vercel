@@ -111,7 +111,7 @@
         const supabaseClient = createClient(supabaseUrl, supabaseKey);
 
         function WarehouseApp() {
-            const [activeTab, setActiveTab] = useState('home');
+            const [activeTab, setActiveTab] = useState("home");
             const [products, setProducts] = useState([]);
             const [locations, setLocations] = useState([]);
             const [productLocationStock, setProductLocationStock] = useState([]);
@@ -164,7 +164,7 @@
             function HomePage() {
                 const totalQty = productLocationStock.reduce((sum, item) => sum + (parseFloat(item.quantity) || 0), 0);
                 return (
-                    <div className="content active">
+                    <div className="content" style={{display: "block"}}>
                         <div className="stats-grid">
                             <div className="stat-card" style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
                                 <div className="stat-value">{products.length}</div>
