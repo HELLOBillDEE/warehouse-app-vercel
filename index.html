@@ -364,6 +364,115 @@
             );
         }
 
+        function BulkTransfer({ products, locations, stock, loadData, msg, msgType, flash }) {
+            const [fromLoc, setFromLoc] = useState('');
+            const [toLoc, setToLoc] = useState('');
+            const [sel, setSel] = useState({});
+            const [notes, setNotes] = useState('');
+
+            const rows = stock
+                .filter(s => s.location_id === fromLoc && parseFloat(s.quantity) > 0)
+                .map(s => ({ ...s, product: products.find(p => p.id === s.product_id) }))
+                .filter(r => r.product);
+
+            const toggleAll = (checked) => {
+                const next = {};
+                if (checked) rows.forEach(r => { next[r.id] = { checked: true, qty: r.quantity }; });
+                setSel(next);
+            };
+
+            const toggleRow = (r, checked) => {
+                setSel({ ...sel, [r.id]: { checked, qty: sel[r.id]?.qty ?? r.quantity } });
+            };
+
+            const setQty = (r, qty) => {
+                setSel({ ...sel, [r.id]: { checked: sel[r.id]?.checked ?? true, qty } });
+            };
+
+            const handle = async () => {
+                if (!fromLoc || !toLoc) { flash('เลือกต้นทางและปลายทาง'); return; }
+                if (fromLoc === toLoc) { flash('ต้นทางและปลายทางต้องไม่ใช่ที่เดียวกัน'); return; }
+                const chosen = rows.filter(r => sel[r.id]?.checked && parseFloat(sel[r.id]?.qty) > 0);
+                if (chosen.length === 0) { flash('เลือกสินค้าอย่างน้อย 1 รายการ'); return; }
+                for (const r of chosen) {
+                    if (parseFloat(sel[r.id].qty) > parseFloat(r.quantity)) { flash('จำนวนที่ย้ายของ ' + r.product.name + ' เกินจำนวนที่มี'); return; }
+                }
+                try {
+                    for (const r of chosen) {
+                        const q = parseFloat(sel[r.id].qty);
+                        const remaining = parseFloat(r.quantity) - q;
+                        await client.from('product_location_stock').update({ quantity: remaining, updated_at: new Date().toISOString() }).eq('id', r.id);
+                        const dest = stock.find(s => s.product_id === r.product_id && s.location_id === toLoc);
+                        if (dest) {
+                            await client.from('product_location_stock').update({ quantity: parseFloat(dest.quantity) + q, updated_at: new Date().toISOString() }).eq('id', dest.id);
+                        } else {
+                            await client.from('product_location_stock').insert([{ product_id: r.product_id, location_id: toLoc, quantity: q }]);
+                        }
+                        await client.from('stock_movements').insert([{ product_id: r.product_id, location_id: fromLoc, quantity_change: -q, movement_type: 'transfer', notes }]);
+                        await client.from('stock_movements').insert([{ product_id: r.product_id, location_id: toLoc, quantity_change: q, movement_type: 'transfer', notes }]);
+                    }
+                    flash('ย้ายคลังสำเร็จ (' + chosen.length + ' รายการ)', 'success');
+                    setSel({}); setNotes('');
+                    await loadData();
+                } catch (err) {
+                    flash('Error: ' + err.message, 'error');
+                }
+            };
+
+            const selectedCount = Object.values(sel).filter(s => s.checked).length;
+
+            return (
+                <div>
+                    <h2>ย้ายคลัง (หลายรายการ)</h2>
+                    {msg && <div className={'alert alert-' + msgType}>{msg}</div>}
+                    <div className="grid-2">
+                        <div className="form-group">
+                            <label>ต้นทาง</label>
+                            <select value={fromLoc} onChange={(e) => { setFromLoc(e.target.value); setSel({}); }}>
+                                <option value="">-- เลือก --</option>
+                                {locations.map(l => (<option key={l.id} value={l.id}>{l.name}</option>))}
+                            </select>
+                        </div>
+                        <div className="form-group">
+                            <label>ปลายทาง</label>
+                            <select value={toLoc} onChange={(e) => setToLoc(e.target.value)}>
+                                <option value="">-- เลือก --</option>
+                                {locations.filter(l => l.id !== fromLoc).map(l => (<option key={l.id} value={l.id}>{l.name}</option>))}
+                            </select>
+                        </div>
+                    </div>
+                    {fromLoc && (
+                        <div>
+                            <div className="row-actions" style={{marginBottom: '10px'}}>
+                                <button className="small secondary" onClick={() => toggleAll(true)}>เลือกทั้งหมด</button>
+                                <button className="small secondary" onClick={() => toggleAll(false)}>ยกเลิกทั้งหมด</button>
+                                <span style={{fontSize: '12px', color: '#666', alignSelf: 'center'}}>เลือกแล้ว {selectedCount} รายการ</span>
+                            </div>
+                            <table>
+                                <thead><tr><th></th><th>สินค้า</th><th>คงเหลือ</th><th>จำนวนที่ย้าย</th></tr></thead>
+                                <tbody>
+                                    {rows.map(r => (
+                                        <tr key={r.id}>
+                                            <td><input type="checkbox" style={{width: 'auto'}} checked={!!sel[r.id]?.checked} onChange={(e) => toggleRow(r, e.target.checked)} /></td>
+                                            <td>{r.product.product_code} - {r.product.name}</td>
+                                            <td>{r.quantity} {r.product.unit}</td>
+                                            <td><input type="number" min="0" max={r.quantity} value={sel[r.id]?.qty ?? r.quantity} onChange={(e) => setQty(r, e.target.value)} disabled={!sel[r.id]?.checked} /></td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                            {rows.length === 0 && <div style={{color: '#999', padding: '10px'}}>ที่อยู่นี้ไม่มีสต็อก</div>}
+                        </div>
+                    )}
+                    <div className="form-group" style={{marginTop: '15px'}}>
+                        <label>หมายเหตุ</label>
+                        <input type="text" value={notes} onChange={(e) => setNotes(e.target.value)} />
+                    </div>
+                    <button onClick={handle}>ยืนยันย้ายคลัง</button>
+                </div>
+            );
+        }
+
         function History({ products, locations, movements }) {
             const [filterType, setFilterType] = useState('');
             const filtered = filterType ? movements.filter(m => m.movement_type === filterType) : movements;
@@ -410,6 +519,8 @@
         function Locations({ locations, loadData, msg, msgType, flash }) {
             const [name, setName] = useState('');
             const [addr, setAddr] = useState('');
+            const [editId, setEditId] = useState(null);
+            const [editVals, setEditVals] = useState({ name: '', address: '' });
 
             const add = async () => {
                 if (!name.trim()) { flash('ระบุชื่อ'); return; }
@@ -420,6 +531,33 @@
                     await loadData();
                 } catch (err) {
                     flash('Error: ' + err.message, 'error');
+                }
+            };
+
+            const startEdit = (l) => { setEditId(l.id); setEditVals({ name: l.name, address: l.address || '' }); };
+            const cancelEdit = () => { setEditId(null); setEditVals({ name: '', address: '' }); };
+
+            const saveEdit = async (l) => {
+                if (!editVals.name.trim()) { flash('ระบุชื่อ'); return; }
+                try {
+                    await client.from('storage_locations').update({ name: editVals.name, address: editVals.address }).eq('id', l.id);
+                    flash('บันทึกสำเร็จ', 'success');
+                    cancelEdit();
+                    await loadData();
+                } catch (err) {
+                    flash('Error: ' + err.message, 'error');
+                }
+            };
+
+            const remove = async (l) => {
+                if (!confirm('ลบที่อยู่ "' + l.name + '" ใช่หรือไม่?')) return;
+                try {
+                    const { error } = await client.from('storage_locations').delete().eq('id', l.id);
+                    if (error) throw error;
+                    flash('ลบสำเร็จ', 'success');
+                    await loadData();
+                } catch (err) {
+                    flash('ลบไม่ได้ เนื่องจากที่อยู่นี้มีข้อมูลสต็อกหรือประวัติผูกอยู่', 'error');
                 }
             };
 
@@ -439,7 +577,39 @@
                     </div>
                     <button onClick={add}>เพิ่มที่อยู่</button>
                     <h3 style={{marginTop: '25px'}}>ที่อยู่ทั้งหมด</h3>
-                    {locations.map(l => (<div key={l.id} className="card"><strong>{l.name}</strong><div style={{fontSize: '12px', color: '#666'}}>{l.address}</div></div>))}
+                    {locations.map(l => (
+                        <div key={l.id} className="card">
+                            {editId === l.id ? (
+                                <div>
+                                    <div className="grid-2">
+                                        <div className="form-group">
+                                            <label>ชื่อที่อยู่</label>
+                                            <input type="text" value={editVals.name} onChange={(e) => setEditVals({...editVals, name: e.target.value})} />
+                                        </div>
+                                        <div className="form-group">
+                                            <label>ที่อยู่</label>
+                                            <input type="text" value={editVals.address} onChange={(e) => setEditVals({...editVals, address: e.target.value})} />
+                                        </div>
+                                    </div>
+                                    <div className="row-actions">
+                                        <button onClick={() => saveEdit(l)}>บันทึก</button>
+                                        <button className="secondary" onClick={cancelEdit}>ยกเลิก</button>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+                                    <div>
+                                        <strong>{l.name}</strong>
+                                        <div style={{fontSize: '12px', color: '#666'}}>{l.address}</div>
+                                    </div>
+                                    <div className="row-actions">
+                                        <button className="small secondary" onClick={() => startEdit(l)}>แก้ไข</button>
+                                        <button className="small danger" onClick={() => remove(l)}>ลบ</button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    ))}
                 </div>
             );
         }
@@ -501,6 +671,7 @@
                         <button className={'nav-tab ' + (tab === 'receiving' ? 'active' : '')} onClick={() => { setTab('receiving'); setMsg(''); }}>รับเข้า</button>
                         <button className={'nav-tab ' + (tab === 'issue' ? 'active' : '')} onClick={() => { setTab('issue'); setMsg(''); }}>เบิกออก</button>
                         <button className={'nav-tab ' + (tab === 'warehouse' ? 'active' : '')} onClick={() => { setTab('warehouse'); setMsg(''); }}>คลังสินค้า</button>
+                        <button className={'nav-tab ' + (tab === 'transfer' ? 'active' : '')} onClick={() => { setTab('transfer'); setMsg(''); }}>ย้ายคลัง</button>
                         <button className={'nav-tab ' + (tab === 'history' ? 'active' : '')} onClick={() => { setTab('history'); setMsg(''); }}>ประวัติ</button>
                         <button className={'nav-tab ' + (tab === 'locations' ? 'active' : '')} onClick={() => { setTab('locations'); setMsg(''); }}>ที่อยู่</button>
                     </div>
@@ -508,6 +679,7 @@
                     {tab === 'receiving' && <Receiving {...shared} />}
                     {tab === 'issue' && <IssueStock {...shared} />}
                     {tab === 'warehouse' && <Warehouse {...shared} />}
+                    {tab === 'transfer' && <BulkTransfer {...shared} />}
                     {tab === 'history' && <History {...shared} />}
                     {tab === 'locations' && <Locations {...shared} />}
                 </div>
