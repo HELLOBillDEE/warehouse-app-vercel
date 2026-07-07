@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ระบบจัดการคลังสินค้า - สมบูรณ์</title>
+    <title>ระบบจัดการคลังสินค้า - เต็มระบบ v2</title>
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -29,6 +29,8 @@
         .btn-green:hover { background: #45a049; }
         .btn-blue { background: #2196F3; color: white; }
         .btn-blue:hover { background: #0b7dda; }
+        .btn-red { background: #f44336; color: white; }
+        .btn-red:hover { background: #da190b; }
         .btn-gray { background: #999; color: white; }
         .btn-gray:hover { background: #777; }
         .btn-small { padding: 6px 12px; font-size: 12px; }
@@ -47,6 +49,9 @@
         .location-stock-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
         .edit-section { background: #f5f5f5; border: 2px solid #4CAF50; padding: 15px; border-radius: 5px; margin-bottom: 15px; }
         .loading { text-align: center; color: #999; font-size: 16px; padding: 40px; }
+        .checkbox-item { display: flex; align-items: center; padding: 8px; border: 1px solid #eee; border-radius: 5px; margin-bottom: 8px; }
+        .checkbox-item input { width: auto; margin-right: 10px; }
+        .bulk-actions { background: #e3f2fd; padding: 15px; border-radius: 5px; margin-bottom: 15px; border-left: 4px solid #2196F3; }
     </style>
 </head>
 <body>
@@ -67,6 +72,8 @@
             const [stockMovements, setStockMovements] = useState([]);
             const [loading, setLoading] = useState(true);
             const [message, setMessage] = useState({ type: '', text: '' });
+            const [selectedProducts, setSelectedProducts] = useState(new Set());
+            const [bulkTransferTo, setBulkTransferTo] = useState('');
 
             useEffect(() => { loadAllData(); }, []);
 
@@ -74,7 +81,7 @@
                 setLoading(true);
                 try {
                     const [productsRes, locationsRes, stockRes, receivingRes, movementsRes] = await Promise.all([
-                        supabaseClient.from('products').select('*'),
+                        supabaseClient.from('products').select('*').limit(3000),
                         supabaseClient.from('storage_locations').select('*'),
                         supabaseClient.from('product_location_stock').select('*'),
                         supabaseClient.from('receiving_logs').select('*').order('received_date', { ascending: false }).limit(100),
@@ -198,7 +205,8 @@
                 const [searchCode, setSearchCode] = useState('');
                 const [editingStock, setEditingStock] = useState(null);
                 const [editQty, setEditQty] = useState('');
-                const filteredProducts = products.filter(p => p.product_code?.toLowerCase().includes(searchCode.toLowerCase()) || p.name?.toLowerCase().includes(searchCode.toLowerCase()));
+                const filteredProducts = products.filter(p => p.product_code?.toLowerCase().includes(searchCode.toLowerCase()) || p.name?.toLowerCase().includes(searchCode.toLowerCase())).slice(0, 100);
+                
                 const handleUpdateStock = async (productId, locationId, newQty) => {
                     try {
                         const stock = getProductLocationStock(productId, locationId);
@@ -216,6 +224,7 @@
                         showMessage('error', 'เกิดข้อผิดพลาด: ' + err.message);
                     }
                 };
+
                 return (
                     <div>
                         <h2>📊 จัดการคลัง</h2>
@@ -253,6 +262,7 @@
                 const [editAddr, setEditAddr] = useState('');
                 const [newLocName, setNewLocName] = useState('');
                 const [newLocAddr, setNewLocAddr] = useState('');
+                
                 const handleAddLocation = async () => {
                     if (!newLocName.trim()) { showMessage('error', 'กรุณาระบุชื่อที่อยู่คลัง'); return; }
                     try {
@@ -265,6 +275,7 @@
                         showMessage('error', 'เกิดข้อผิดพลาด: ' + err.message);
                     }
                 };
+                
                 const handleUpdateLocation = async (locId) => {
                     try {
                         const { error } = await supabaseClient.from('storage_locations').update({ name: editName, address: editAddr }).eq('id', locId);
@@ -276,6 +287,22 @@
                         showMessage('error', 'เกิดข้อผิดพลาด: ' + err.message);
                     }
                 };
+
+                const handleDeleteLocation = async (locId) => {
+                    if (confirm('ยืนยันการลบ? (ต้องไม่มีสต็อก)')) {
+                        try {
+                            const hasStock = productLocationStock.some(s => s.location_id === locId);
+                            if (hasStock) { showMessage('error', 'ไม่สามารถลบ - มีสต็อกในที่อยู่นี้'); return; }
+                            const { error } = await supabaseClient.from('storage_locations').delete().eq('id', locId);
+                            if (error) throw error;
+                            showMessage('success', 'ลบที่อยู่สำเร็จ!');
+                            await loadAllData();
+                        } catch (err) {
+                            showMessage('error', 'เกิดข้อผิดพลาด: ' + err.message);
+                        }
+                    }
+                };
+
                 return (
                     <div>
                         <h2>📍 จัดการที่อยู่คลัง</h2>
@@ -292,9 +319,84 @@
                             const totalQty = locStocks.reduce((sum, s) => sum + (parseFloat(s.quantity) || 0), 0);
                             return (
                                 <div key={loc.id} className="card">
-                                    {editingLoc === loc.id ? (<div><h4>แก้ไข: {loc.name}</h4><div className="form-group"><label>ชื่อ</label><input type="text" value={editName} onChange={(e) => setEditName(e.target.value)} /></div><div className="form-group"><label>ที่อยู่</label><textarea rows="2" value={editAddr} onChange={(e) => setEditAddr(e.target.value)} /></div><button className="btn btn-green btn-small" onClick={() => handleUpdateLocation(loc.id)}>💾 บันทึก</button><button className="btn btn-gray btn-small" onClick={() => setEditingLoc(null)}>❌ ยกเลิก</button></div>) : (<div><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '10px' }}><div><h4>{loc.name}</h4><p style={{ fontSize: '12px', color: '#666' }}>{loc.address || 'ไม่มีที่อยู่'}</p><p style={{ fontSize: '14px', color: '#4CAF50', fontWeight: 'bold', marginTop: '5px' }}>📊 รวม: {totalQty.toFixed(0)} ชิ้น</p></div><button className="btn btn-blue btn-small" onClick={() => { setEditingLoc(loc.id); setEditName(loc.name); setEditAddr(loc.address || ''); }}>✏️ แก้ไข</button></div></div>)}
+                                    {editingLoc === loc.id ? (<div><h4>แก้ไข: {loc.name}</h4><div className="form-group"><label>ชื่อ</label><input type="text" value={editName} onChange={(e) => setEditName(e.target.value)} /></div><div className="form-group"><label>ที่อยู่</label><textarea rows="2" value={editAddr} onChange={(e) => setEditAddr(e.target.value)} /></div><button className="btn btn-green btn-small" onClick={() => handleUpdateLocation(loc.id)}>💾 บันทึก</button><button className="btn btn-gray btn-small" onClick={() => setEditingLoc(null)}>❌ ยกเลิก</button></div>) : (<div><div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '10px' }}><div><h4>{loc.name}</h4><p style={{ fontSize: '12px', color: '#666' }}>{loc.address || 'ไม่มีที่อยู่'}</p><p style={{ fontSize: '14px', color: '#4CAF50', fontWeight: 'bold', marginTop: '5px' }}>📊 รวม: {totalQty.toFixed(0)} ชิ้น</p></div><div><button className="btn btn-blue btn-small" onClick={() => { setEditingLoc(loc.id); setEditName(loc.name); setEditAddr(loc.address || ''); }}>✏️ แก้ไข</button> <button className="btn btn-red btn-small" onClick={() => handleDeleteLocation(loc.id)}>🗑️ ลบ</button></div></div></div>)}
                                 </div>
                             );
+                        })}
+                    </div>
+                );
+            }
+
+            function BulkTransferTab() {
+                const handleSelectProduct = (productId, locationId) => {
+                    const key = `${productId}-${locationId}`;
+                    const newSet = new Set(selectedProducts);
+                    if (newSet.has(key)) newSet.delete(key);
+                    else newSet.add(key);
+                    setSelectedProducts(newSet);
+                };
+
+                const handleBulkTransfer = async () => {
+                    if (selectedProducts.size === 0) { showMessage('error', 'เลือกสินค้าก่อน'); return; }
+                    if (!bulkTransferTo) { showMessage('error', 'เลือกสถานที่ปลายทาง'); return; }
+                    try {
+                        for (const key of selectedProducts) {
+                            const [productId, fromLocationId] = key.split('-');
+                            const stock = getProductLocationStock(productId, fromLocationId);
+                            if (!stock) continue;
+                            const toStock = getProductLocationStock(productId, bulkTransferTo);
+                            if (toStock) {
+                                await supabaseClient.from('product_location_stock').update({ quantity: parseFloat(toStock.quantity) + parseFloat(stock.quantity) }).eq('id', toStock.id);
+                            } else {
+                                await supabaseClient.from('product_location_stock').insert([{ product_id: productId, location_id: bulkTransferTo, quantity: stock.quantity }]);
+                            }
+                            await supabaseClient.from('product_location_stock').delete().eq('id', stock.id);
+                            await supabaseClient.from('stock_movements').insert([{ product_id: productId, location_id: fromLocationId, quantity_change: -stock.quantity, movement_type: 'transfer', notes: `ย้ายไปที่ ${getLocationName(bulkTransferTo)}` }]);
+                        }
+                        showMessage('success', 'ย้ายสินค้าสำเร็จ!');
+                        setSelectedProducts(new Set());
+                        setBulkTransferTo('');
+                        await loadAllData();
+                    } catch (err) {
+                        showMessage('error', 'เกิดข้อผิดพลาด: ' + err.message);
+                    }
+                };
+
+                return (
+                    <div>
+                        <h2>📦 ย้ายสินค้ากลุ่ม</h2>
+                        {message.text && <div className={message.type === 'success' ? 'success' : 'error'}>{message.text}</div>}
+                        {selectedProducts.size > 0 && (
+                            <div className="bulk-actions">
+                                <h3>✅ เลือก {selectedProducts.size} รายการ</h3>
+                                <div className="form-group">
+                                    <label>📍 ย้ายไปสถานที่:</label>
+                                    <select value={bulkTransferTo} onChange={(e) => setBulkTransferTo(e.target.value)}>
+                                        <option value="">-- เลือกสถานที่ --</option>
+                                        {locations.map(loc => (<option key={loc.id} value={loc.id}>{loc.name}</option>))}
+                                    </select>
+                                </div>
+                                <button className="btn btn-green" onClick={handleBulkTransfer}>✅ ย้ายนี้เลย</button>
+                                <button className="btn btn-gray" onClick={() => setSelectedProducts(new Set())}>❌ ยกเลิก</button>
+                            </div>
+                        )}
+                        <h3>📦 เลือกสินค้าที่ต้องการย้าย</h3>
+                        {products.slice(0, 50).map(product => {
+                            const productStocks = productLocationStock.filter(s => s.product_id === product.id);
+                            return productStocks.length > 0 ? (
+                                <div key={product.id} className="card">
+                                    <div><strong>{product.product_code}</strong> - {product.name}</div>
+                                    {productStocks.map(stock => {
+                                        const key = `${product.id}-${stock.location_id}`;
+                                        return (
+                                            <div key={stock.id} className="checkbox-item">
+                                                <input type="checkbox" checked={selectedProducts.has(key)} onChange={() => handleSelectProduct(product.id, stock.location_id)} />
+                                                <span>📍 {getLocationName(stock.location_id)} ({stock.quantity} ชิ้น)</span>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            ) : null;
                         })}
                     </div>
                 );
@@ -314,15 +416,16 @@
 
             return (
                 <div className="container">
-                    <h1>📦 ระบบจัดการคลังสินค้า - เต็มระบบ</h1>
+                    <h1>📦 ระบบจัดการคลังสินค้า - เต็มระบบ v2</h1>
                     <div className="tabs">
                         <button className={`tab-button ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={() => setActiveTab('dashboard')}>📊 แดชบอร์ด</button>
                         <button className={`tab-button ${activeTab === 'receiving' ? 'active' : ''}`} onClick={() => setActiveTab('receiving')}>📥 รับเข้า</button>
                         <button className={`tab-button ${activeTab === 'warehouse' ? 'active' : ''}`} onClick={() => setActiveTab('warehouse')}>📊 จัดการคลัง</button>
                         <button className={`tab-button ${activeTab === 'locations' ? 'active' : ''}`} onClick={() => setActiveTab('locations')}>📍 ที่อยู่คลัง</button>
+                        <button className={`tab-button ${activeTab === 'bulktransfer' ? 'active' : ''}`} onClick={() => setActiveTab('bulktransfer')}>📦 ย้ายกลุ่ม</button>
                         <button className={`tab-button ${activeTab === 'history' ? 'active' : ''}`} onClick={() => setActiveTab('history')}>📜 ประวัติ</button>
                     </div>
-                    {loading ? (<div className="loading">⏳ กำลังโหลดข้อมูล...</div>) : (<>{activeTab === 'dashboard' && <DashboardTab />}{activeTab === 'receiving' && <ReceivingTab />}{activeTab === 'warehouse' && <WarehouseTab />}{activeTab === 'locations' && <LocationTab />}{activeTab === 'history' && <HistoryTab />}</>)}
+                    {loading ? (<div className="loading">⏳ กำลังโหลดข้อมูล...</div>) : (<>{activeTab === 'dashboard' && <DashboardTab />}{activeTab === 'receiving' && <ReceivingTab />}{activeTab === 'warehouse' && <WarehouseTab />}{activeTab === 'locations' && <LocationTab />}{activeTab === 'bulktransfer' && <BulkTransferTab />}{activeTab === 'history' && <HistoryTab />}</>)}
                 </div>
             );
         }
