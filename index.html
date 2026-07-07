@@ -267,7 +267,7 @@
             const startEdit = (p) => {
                 const ps = stock.filter(s => s.product_id === p.id);
                 const qtyByLoc = {};
-                ps.forEach(s => { qtyByLoc[s.location_id] = s.quantity; });
+                locations.forEach(l => { const s = ps.find(x => x.location_id === l.id); qtyByLoc[l.id] = s ? s.quantity : 0; });
                 setEditId(p.id);
                 setEditVals({ name: p.name, unit: p.unit || '', price: p.price || '', qtyByLoc });
             };
@@ -278,13 +278,17 @@
                 try {
                     await client.from('products').update({ name: editVals.name, unit: editVals.unit, price: editVals.price === '' ? null : parseFloat(editVals.price) }).eq('id', p.id);
                     const ps = stock.filter(s => s.product_id === p.id);
-                    for (const s of ps) {
-                        const newQty = parseFloat(editVals.qtyByLoc[s.location_id]);
-                        const oldQty = parseFloat(s.quantity);
-                        if (!isNaN(newQty) && newQty !== oldQty) {
+                    for (const l of locations) {
+                        const s = ps.find(x => x.location_id === l.id);
+                        const newQty = parseFloat(editVals.qtyByLoc[l.id]);
+                        const oldQty = s ? parseFloat(s.quantity) : 0;
+                        if (isNaN(newQty) || newQty === oldQty) continue;
+                        if (s) {
                             await client.from('product_location_stock').update({ quantity: newQty, updated_at: new Date().toISOString() }).eq('id', s.id);
-                            await client.from('stock_movements').insert([{ product_id: p.id, location_id: s.location_id, quantity_change: newQty - oldQty, movement_type: 'adjustment', notes: 'แก้ไขจากหน้าคลังสินค้า' }]);
+                        } else {
+                            await client.from('product_location_stock').insert([{ product_id: p.id, location_id: l.id, quantity: newQty }]);
                         }
+                        await client.from('stock_movements').insert([{ product_id: p.id, location_id: l.id, quantity_change: newQty - oldQty, movement_type: 'adjustment', notes: 'แก้ไขจากหน้าคลังสินค้า' }]);
                     }
                     flash('บันทึกการแก้ไขสำเร็จ', 'success');
                     cancelEdit();
@@ -314,9 +318,9 @@
                                             </div>
                                             <button className="small secondary" onClick={() => startEdit(p)}>แก้ไข</button>
                                         </div>
-                                        {ps.map(s => {
-                                            const l = locations.find(x => x.id === s.location_id);
-                                            return (<div key={s.id} style={{fontSize: '12px', color: '#666', marginTop: '3px'}}>📍 {l ? l.name : '-'}: {s.quantity}</div>);
+                                        {locations.map(l => {
+                                            const s = ps.find(x => x.location_id === l.id);
+                                            return (<div key={l.id} style={{fontSize: '12px', color: '#666', marginTop: '3px'}}>📍 {l.name}: {s ? s.quantity : 0}</div>);
                                         })}
                                     </div>
                                 )}
@@ -336,15 +340,12 @@
                                                 <input type="number" value={editVals.price} onChange={(e) => setEditVals({...editVals, price: e.target.value})} />
                                             </div>
                                         </div>
-                                        {ps.map(s => {
-                                            const l = locations.find(x => x.id === s.location_id);
-                                            return (
-                                                <div className="form-group" key={s.id}>
-                                                    <label>จำนวนที่ 📍 {l ? l.name : '-'}</label>
-                                                    <input type="number" value={editVals.qtyByLoc[s.location_id]} onChange={(e) => setEditVals({...editVals, qtyByLoc: {...editVals.qtyByLoc, [s.location_id]: e.target.value}})} />
-                                                </div>
-                                            );
-                                        })}
+                                        {locations.map(l => (
+                                            <div className="form-group" key={l.id}>
+                                                <label>จำนวนที่ 📍 {l.name}</label>
+                                                <input type="number" value={editVals.qtyByLoc[l.id]} onChange={(e) => setEditVals({...editVals, qtyByLoc: {...editVals.qtyByLoc, [l.id]: e.target.value}})} />
+                                            </div>
+                                        ))}
                                         <div className="row-actions">
                                             <button onClick={() => saveEdit(p)}>บันทึก</button>
                                             <button className="secondary" onClick={cancelEdit}>ยกเลิก</button>
