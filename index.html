@@ -45,6 +45,8 @@
         .badge-out { background: #f8d7da; color: #721c24; }
         .badge-adj { background: #fff3cd; color: #856404; }
         .row-actions { display: flex; gap: 8px; margin-top: 10px; }
+        .loc-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+        .loc-tag { display: inline-block; background: #e9ecef; color: #333; padding: 3px 10px; border-radius: 12px; font-size: 11px; }
         .search-results { border: 1px solid #ddd; max-height: 150px; overflow-y: auto; }
         .search-result-item { padding: 8px; border-bottom: 1px solid #eee; cursor: pointer; }
         .search-result-item:hover { background: #f0f0f0; }
@@ -318,10 +320,13 @@
                                             </div>
                                             <button className="small secondary" onClick={() => startEdit(p)}>แก้ไข</button>
                                         </div>
-                                        {locations.map(l => {
-                                            const s = ps.find(x => x.location_id === l.id);
-                                            return (<div key={l.id} style={{fontSize: '12px', color: '#666', marginTop: '3px'}}>📍 {l.name}: {s ? s.quantity : 0}</div>);
-                                        })}
+                                        <div className="loc-tags">
+                                            {ps.filter(s => parseFloat(s.quantity) > 0).map(s => {
+                                                const l = locations.find(x => x.id === s.location_id);
+                                                return (<span key={s.id} className="loc-tag">📍 {l ? l.name : '-'}: {s.quantity}</span>);
+                                            })}
+                                            {ps.filter(s => parseFloat(s.quantity) > 0).length === 0 && <span style={{fontSize: '11px', color: '#999'}}>ยังไม่มีสต็อก</span>}
+                                        </div>
                                     </div>
                                 )}
                                 {isEditing && (
