@@ -8,48 +8,160 @@
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
+        :root {
+            --primary: #3B5EFB;
+            --primary-dark: #2C48DE;
+            --primary-light: #EEF1FF;
+            --bg: #F3F5FB;
+            --card: #FFFFFF;
+            --text: #1E2233;
+            --text-muted: #8A8FA3;
+            --border: #E7E9F3;
+            --success-bg: #E4F7EC;
+            --success-text: #1A8A4E;
+            --danger: #F04452;
+            --danger-bg: #FDECEE;
+            --danger-text: #D2313D;
+            --warn-bg: #FFF3D6;
+            --warn-text: #9A6A00;
+            --radius: 14px;
+        }
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: Arial, sans-serif; background: #f5f5f5; padding: 20px; }
-        .container { max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; }
-        h1 { color: #333; margin-bottom: 20px; }
-        h2 { color: #333; margin: 20px 0 15px 0; font-size: 20px; }
-        h3 { color: #333; font-size: 16px; }
-        .nav-tabs { display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 2px solid #ddd; flex-wrap: wrap; }
-        .nav-tab { padding: 10px 20px; cursor: pointer; background: none; color: #333; border: none; border-bottom: 3px solid transparent; font-size: 14px; }
-        .nav-tab.active { border-bottom-color: #007bff; color: #007bff; font-weight: bold; }
-        .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 20px; }
-        .stat-box { background: #f9f9f9; padding: 15px; border-radius: 4px; text-align: center; border-left: 4px solid #007bff; }
-        .stat-value { font-size: 28px; font-weight: bold; color: #007bff; }
-        .stat-label { font-size: 12px; color: #666; margin-top: 5px; }
-        .form-group { margin-bottom: 15px; }
-        label { display: block; margin-bottom: 5px; font-weight: bold; color: #333; }
-        input, select, textarea { width: 100%; padding: 8px; border: 2px solid #ddd; border-radius: 4px; background: white; color: #333; font-size: 14px; }
-        button { padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold; }
-        button:hover { background: #0056b3; }
-        button.secondary { background: #6c757d; }
-        button.danger { background: #dc3545; }
-        button.small { padding: 6px 12px; font-size: 12px; }
-        .alert { padding: 12px; margin-bottom: 15px; border-radius: 4px; }
-        .alert-success { background: #d4edda; color: #155724; }
-        .alert-error { background: #f8d7da; color: #721c24; }
-        .loading { text-align: center; padding: 40px; color: #999; }
-        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
-        th { background: #f9f9f9; padding: 10px; text-align: left; border-bottom: 2px solid #ddd; font-weight: bold; }
-        td { padding: 10px; border-bottom: 1px solid #ddd; }
+        body {
+            font-family: 'Sarabun', 'Noto Sans Thai', sans-serif;
+            background: var(--bg);
+            padding: 28px 20px;
+            color: var(--text);
+        }
+        .container {
+            max-width: 1280px;
+            margin: 0 auto;
+            background: var(--card);
+            border-radius: 20px;
+            box-shadow: 0 1px 3px rgba(30, 34, 51, 0.04), 0 12px 32px -12px rgba(30, 34, 51, 0.10);
+            display: flex;
+            align-items: stretch;
+        }
+        .sidebar {
+            width: 236px;
+            flex-shrink: 0;
+            background: var(--bg);
+            padding: 24px 16px;
+            display: flex;
+            flex-direction: column;
+            border-right: 1px solid var(--border);
+            border-radius: 20px 0 0 20px;
+            position: sticky;
+            top: 0;
+            align-self: flex-start;
+            max-height: 100vh;
+            overflow-y: auto;
+        }
+        .main-content { flex: 1; min-width: 0; padding: 28px 32px; }
+        .app-header { display: flex; align-items: center; gap: 12px; margin-bottom: 22px; padding: 0 6px; }
+        .app-header .logo-badge {
+            width: 40px; height: 40px; border-radius: 12px;
+            background: linear-gradient(135deg, var(--primary), #6B8CFF);
+            display: flex; align-items: center; justify-content: center;
+            color: white; flex-shrink: 0;
+            box-shadow: 0 8px 16px -6px rgba(59, 94, 251, 0.45);
+        }
+        h1 { color: var(--text); font-size: 17px; font-weight: 700; line-height: 1.25; }
+        .app-header .app-subtitle { font-size: 11.5px; color: var(--text-muted); margin-top: 2px; }
+        h2 { color: var(--text); margin: 4px 0 18px 0; font-size: 18px; font-weight: 600; }
+        h3 { color: var(--text); font-size: 15px; font-weight: 600; }
+        .nav-tabs {
+            display: flex; flex-direction: column; gap: 2px;
+        }
+        .nav-tab {
+            display: flex; align-items: center; gap: 10px;
+            padding: 10px 12px; cursor: pointer; background: none; color: var(--text-muted);
+            border: none; border-radius: 10px; font-size: 13.5px; font-weight: 500;
+            font-family: inherit; transition: background 0.15s, color 0.15s;
+            width: 100%; text-align: left;
+        }
+        .nav-tab:hover { color: var(--text); background: var(--border); }
+        .nav-tab.active { background: var(--card); color: var(--primary); font-weight: 600; box-shadow: 0 2px 8px rgba(30,34,51,0.08); }
+        .nav-tab svg { flex-shrink: 0; }
+        @media (max-width: 760px) {
+            .container { flex-direction: column; }
+            .sidebar {
+                width: 100%; border-right: none; border-bottom: 1px solid var(--border);
+                border-radius: 20px 20px 0 0; position: static; max-height: none;
+            }
+            .nav-tabs { flex-direction: row; flex-wrap: wrap; }
+            .nav-tab { width: auto; }
+            .main-content { padding: 22px 18px; }
+        }
+        .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 28px; }
+        .stat-box {
+            background: var(--card); padding: 18px 18px 16px; border-radius: var(--radius);
+            border: 1px solid var(--border); position: relative;
+        }
+        .stat-box .stat-icon {
+            width: 34px; height: 34px; border-radius: 10px; background: var(--primary-light);
+            color: var(--primary); display: flex; align-items: center; justify-content: center;
+            margin-bottom: 12px;
+        }
+        .stat-value { font-size: 26px; font-weight: 700; color: var(--text); line-height: 1.1; }
+        .stat-label { font-size: 12.5px; color: var(--text-muted); margin-top: 4px; }
+        .form-group { margin-bottom: 16px; }
+        label { display: block; margin-bottom: 6px; font-weight: 600; color: var(--text); font-size: 13.5px; }
+        input, select, textarea {
+            width: 100%; padding: 9px 12px; border: 1.5px solid var(--border); border-radius: 10px;
+            background: var(--card); color: var(--text); font-size: 14px; font-family: inherit;
+            transition: border-color 0.15s, box-shadow 0.15s;
+        }
+        input:focus, select:focus, textarea:focus {
+            outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-light);
+        }
+        button {
+            padding: 10px 20px; background: var(--primary); color: white; border: none;
+            border-radius: 10px; cursor: pointer; font-size: 14px; font-weight: 600;
+            font-family: inherit; transition: background 0.15s, transform 0.05s;
+        }
+        button:hover { background: var(--primary-dark); }
+        button:active { transform: translateY(1px); }
+        button.secondary { background: var(--bg); color: var(--text); }
+        button.secondary:hover { background: var(--border); }
+        button.danger { background: var(--danger-bg); color: var(--danger-text); }
+        button.danger:hover { background: var(--danger); color: white; }
+        button.small { padding: 7px 13px; font-size: 12.5px; border-radius: 8px; }
+        .alert {
+            padding: 12px 16px; margin-bottom: 16px; border-radius: 12px; font-size: 14px;
+            display: flex; align-items: center; gap: 8px;
+        }
+        .alert-success { background: var(--success-bg); color: var(--success-text); }
+        .alert-error { background: var(--danger-bg); color: var(--danger-text); }
+        .loading { text-align: center; padding: 60px; color: var(--text-muted); }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 14px; }
+        th { background: var(--bg); color: var(--text-muted); padding: 11px 12px; text-align: left; font-weight: 600; font-size: 12.5px; }
+        th:first-child { border-radius: 8px 0 0 8px; }
+        th:last-child { border-radius: 0 8px 8px 0; }
+        td { padding: 12px; border-bottom: 1px solid var(--border); }
+        tr:last-child td { border-bottom: none; }
         .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
         .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; }
-        .card { padding: 12px; background: #f9f9f9; border-radius: 4px; margin-bottom: 15px; }
-        .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: bold; }
-        .badge-in { background: #d4edda; color: #155724; }
-        .badge-out { background: #f8d7da; color: #721c24; }
-        .badge-adj { background: #fff3cd; color: #856404; }
+        .card {
+            padding: 16px; background: var(--card); border: 1px solid var(--border);
+            border-radius: var(--radius); margin-bottom: 12px; transition: box-shadow 0.15s;
+        }
+        .card:hover { box-shadow: 0 4px 14px -6px rgba(30,34,51,0.10); }
+        .badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+        .badge-in { background: var(--success-bg); color: var(--success-text); }
+        .badge-out { background: var(--danger-bg); color: var(--danger-text); }
+        .badge-adj { background: var(--warn-bg); color: var(--warn-text); }
         .row-actions { display: flex; gap: 8px; margin-top: 10px; }
-        .loc-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-        .loc-tag { display: inline-block; background: #e9ecef; color: #333; padding: 3px 10px; border-radius: 12px; font-size: 11px; }
-        .search-results { border: 1px solid #ddd; max-height: 150px; overflow-y: auto; }
-        .search-result-item { padding: 8px; border-bottom: 1px solid #eee; cursor: pointer; }
-        .search-result-item:hover { background: #f0f0f0; }
+        .loc-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+        .loc-tag { display: inline-block; background: var(--primary-light); color: var(--primary-dark); padding: 4px 11px; border-radius: 999px; font-size: 11.5px; font-weight: 500; }
+        .search-results { border: 1px solid var(--border); border-radius: 10px; margin-top: 6px; max-height: 170px; overflow-y: auto; box-shadow: 0 8px 20px -8px rgba(30,34,51,0.15); }
+        .search-result-item { padding: 9px 12px; border-bottom: 1px solid var(--border); cursor: pointer; font-size: 13.5px; }
+        .search-result-item:last-child { border-bottom: none; }
+        .search-result-item:hover { background: var(--primary-light); }
     </style>
 </head>
 <body>
@@ -74,15 +186,26 @@
             return Math.round((target - today) / 86400000);
         };
 
+        const iconProps = { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 24 24', width: 18, height: 18, fill: 'none', stroke: 'currentColor', strokeWidth: 1.9, strokeLinecap: 'round', strokeLinejoin: 'round' };
+        const IconHome = () => (<svg {...iconProps}><path d="M3.5 11.5L12 4l8.5 7.5" /><path d="M5.5 10v9.5h13V10" /><path d="M9.5 19.5V14h5v5.5" /></svg>);
+        const IconIn = () => (<svg {...iconProps}><rect x="4" y="4" width="16" height="16" rx="4" /><path d="M12 8.5v7M9 12.5l3 3 3-3" /></svg>);
+        const IconOut = () => (<svg {...iconProps}><rect x="4" y="4" width="16" height="16" rx="4" /><path d="M12 15.5v-7M9 11.5l3-3 3 3" /></svg>);
+        const IconBox = () => (<svg {...iconProps}><path d="M12 3.5l8 4v9l-8 4-8-4v-9l8-4z" /><path d="M4 7.5l8 4 8-4M12 11.5v9" /></svg>);
+        const IconSwap = () => (<svg {...iconProps}><path d="M4 8h13.5M14.5 4.5L17.5 8l-3 3.5" /><path d="M20 16H6.5M9.5 12.5L6.5 16l3 3.5" /></svg>);
+        const IconAlert = () => (<svg {...iconProps}><path d="M12 3.5l9 16h-18l9-16z" /><path d="M12 10v4" /><circle cx="12" cy="17" r="0.6" fill="currentColor" stroke="none" /></svg>);
+        const IconHistory = () => (<svg {...iconProps}><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3.2 2" /></svg>);
+        const IconPin = () => (<svg {...iconProps}><path d="M12 21s6.5-6.2 6.5-11.2A6.5 6.5 0 105.5 9.8C5.5 14.8 12 21 12 21z" /><circle cx="12" cy="9.7" r="2.3" /></svg>);
+        const IconLogo = () => (<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="white" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3.5l8 4v9l-8 4-8-4v-9l8-4z" /><path d="M4 7.5l8 4 8-4M12 11.5v9" /></svg>);
+
         function Home({ products, locations, stock, movements }) {
             const total = stock.reduce((s, x) => s + (parseFloat(x.quantity) || 0), 0);
             return (
                 <div>
                     <div className="stats">
-                        <div className="stat-box"><div className="stat-value">{products.length}</div><div className="stat-label">สินค้า</div></div>
-                        <div className="stat-box"><div className="stat-value">{locations.length}</div><div className="stat-label">ที่อยู่</div></div>
-                        <div className="stat-box"><div className="stat-value">{total.toFixed(0)}</div><div className="stat-label">จำนวน</div></div>
-                        <div className="stat-box"><div className="stat-value">{new Set(stock.map(s => s.location_id)).size}</div><div className="stat-label">ใช้งาน</div></div>
+                        <div className="stat-box"><div className="stat-icon"><IconBox /></div><div className="stat-value">{products.length}</div><div className="stat-label">สินค้า</div></div>
+                        <div className="stat-box"><div className="stat-icon"><IconPin /></div><div className="stat-value">{locations.length}</div><div className="stat-label">ที่อยู่</div></div>
+                        <div className="stat-box"><div className="stat-icon"><IconIn /></div><div className="stat-value">{total.toFixed(0)}</div><div className="stat-label">จำนวน</div></div>
+                        <div className="stat-box"><div className="stat-icon"><IconSwap /></div><div className="stat-value">{new Set(stock.map(s => s.location_id)).size}</div><div className="stat-label">ใช้งาน</div></div>
                     </div>
                     <h2>รายการล่าสุด</h2>
                     {movements.slice(0, 10).map(m => {
@@ -769,25 +892,35 @@
 
             return (
                 <div className="container">
-                    <h1>🏭 ระบบจัดการคลังสินค้า</h1>
-                    <div className="nav-tabs">
-                        <button className={'nav-tab ' + (tab === 'home' ? 'active' : '')} onClick={() => { setTab('home'); setMsg(''); }}>หน้าแรก</button>
-                        <button className={'nav-tab ' + (tab === 'receiving' ? 'active' : '')} onClick={() => { setTab('receiving'); setMsg(''); }}>รับเข้า</button>
-                        <button className={'nav-tab ' + (tab === 'issue' ? 'active' : '')} onClick={() => { setTab('issue'); setMsg(''); }}>เบิกออก</button>
-                        <button className={'nav-tab ' + (tab === 'warehouse' ? 'active' : '')} onClick={() => { setTab('warehouse'); setMsg(''); }}>คลังสินค้า</button>
-                        <button className={'nav-tab ' + (tab === 'transfer' ? 'active' : '')} onClick={() => { setTab('transfer'); setMsg(''); }}>ย้ายคลัง</button>
-                        <button className={'nav-tab ' + (tab === 'expiry' ? 'active' : '')} onClick={() => { setTab('expiry'); setMsg(''); }}>ใกล้หมดอายุ{soonCount > 0 ? ' (' + soonCount + ')' : ''}</button>
-                        <button className={'nav-tab ' + (tab === 'history' ? 'active' : '')} onClick={() => { setTab('history'); setMsg(''); }}>ประวัติ</button>
-                        <button className={'nav-tab ' + (tab === 'locations' ? 'active' : '')} onClick={() => { setTab('locations'); setMsg(''); }}>ที่อยู่</button>
+                    <div className="sidebar">
+                        <div className="app-header">
+                            <div className="logo-badge"><IconLogo /></div>
+                            <div>
+                                <h1>ระบบจัดการคลังสินค้า</h1>
+                                <div className="app-subtitle">บริหารสต็อกแบบเรียลไทม์</div>
+                            </div>
+                        </div>
+                        <div className="nav-tabs">
+                            <button className={'nav-tab ' + (tab === 'home' ? 'active' : '')} onClick={() => { setTab('home'); setMsg(''); }}><IconHome />หน้าแรก</button>
+                            <button className={'nav-tab ' + (tab === 'receiving' ? 'active' : '')} onClick={() => { setTab('receiving'); setMsg(''); }}><IconIn />รับเข้า</button>
+                            <button className={'nav-tab ' + (tab === 'issue' ? 'active' : '')} onClick={() => { setTab('issue'); setMsg(''); }}><IconOut />เบิกออก</button>
+                            <button className={'nav-tab ' + (tab === 'warehouse' ? 'active' : '')} onClick={() => { setTab('warehouse'); setMsg(''); }}><IconBox />คลังสินค้า</button>
+                            <button className={'nav-tab ' + (tab === 'transfer' ? 'active' : '')} onClick={() => { setTab('transfer'); setMsg(''); }}><IconSwap />ย้ายคลัง</button>
+                            <button className={'nav-tab ' + (tab === 'expiry' ? 'active' : '')} onClick={() => { setTab('expiry'); setMsg(''); }}><IconAlert />ใกล้หมดอายุ{soonCount > 0 ? ' (' + soonCount + ')' : ''}</button>
+                            <button className={'nav-tab ' + (tab === 'history' ? 'active' : '')} onClick={() => { setTab('history'); setMsg(''); }}><IconHistory />ประวัติ</button>
+                            <button className={'nav-tab ' + (tab === 'locations' ? 'active' : '')} onClick={() => { setTab('locations'); setMsg(''); }}><IconPin />ที่อยู่</button>
+                        </div>
                     </div>
-                    {tab === 'home' && <Home {...shared} />}
-                    {tab === 'receiving' && <Receiving {...shared} />}
-                    {tab === 'issue' && <IssueStock {...shared} />}
-                    {tab === 'warehouse' && <Warehouse {...shared} />}
-                    {tab === 'transfer' && <BulkTransfer {...shared} />}
-                    {tab === 'expiry' && <ExpiryAlerts {...shared} />}
-                    {tab === 'history' && <History {...shared} />}
-                    {tab === 'locations' && <Locations {...shared} />}
+                    <div className="main-content">
+                        {tab === 'home' && <Home {...shared} />}
+                        {tab === 'receiving' && <Receiving {...shared} />}
+                        {tab === 'issue' && <IssueStock {...shared} />}
+                        {tab === 'warehouse' && <Warehouse {...shared} />}
+                        {tab === 'transfer' && <BulkTransfer {...shared} />}
+                        {tab === 'expiry' && <ExpiryAlerts {...shared} />}
+                        {tab === 'history' && <History {...shared} />}
+                        {tab === 'locations' && <Locations {...shared} />}
+                    </div>
                 </div>
             );
         }
