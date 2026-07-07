@@ -1,1 +1,166 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ระบบจัดการคลังสินค้าหลัก</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif; background: 
+#f5f5f5; color: #333; }
+        .container { max-width: 1200px; margin: 0 auto; padding: 20px; background: white; min-height: 100vh; }
+        h1 { color: #333; border-bottom: 3px solid 
+#4CAF50; padding-bottom: 10px; margin-bottom: 20px; }
+        .search-bar { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; }
+        .search-bar input { flex: 1; min-width: 200px; padding: 12px; border: 1px solid #ddd; border-radius: 5px; font-size: 14px; }
+        .btn { padding: 12px 20px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; font-size: 14px; }
+        .btn-green { background: 
+#4CAF50; color: white; }
+        .btn-blue { background: 
+#2196F3; color: white; }
+        .btn-gray { background: #999; color: white; }
+        .add-location-form { background: 
+#f5f5f5; padding: 15px; border-radius: 5px; margin-bottom: 20px; border: 2px solid 
+#4CAF50; }
+        .add-location-form input { display: block; width: 100%; margin-bottom: 10px; padding: 10px; border: 1px solid #ddd; border-radius: 5px; }
+        .filter-section { margin-bottom: 20px; background: 
+#f9f9f9; padding: 15px; border-radius: 5px; }
+        .filter-section label { font-weight: bold; margin-right: 10px; }
+        .filter-section select { padding: 10px; border-radius: 5px; border: 1px solid #ddd; min-width: 200px; font-size: 14px; }
+        .summary { background: 
+#e8f5e9; padding: 12px; border-radius: 5px; margin-bottom: 20px; border-left: 4px solid 
+#4CAF50; }
+        .summary strong { color: 
+#2e7d32; }
+        .products-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 15px; }
+        .product-card { border: 1px solid #ddd; border-radius: 8px; padding: 15px; background: 
+#fafafa; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        .product-card-title { font-weight: bold; color: #333; margin-bottom: 8px; font-size: 15px; }
+        .product-card-info { font-size: 12px; color: #666; margin-bottom: 4px; }
+        .product-card-price { font-size: 12px; margin-top: 8px; padding-top: 8px; border-top: 1px solid #eee; }
+        .loading { text-align: center; color: #999; font-size: 16px; padding: 40px; }
+        .info-box { margin-top: 40px; padding: 20px; background: 
+#f5f5f5; border-radius: 8px; border: 1px solid #ddd; }
+        .info-box h3 { margin: 0 0 10px 0; color: #333; }
+        .info-box p { font-size: 14px; color: #666; line-height: 1.6; margin: 5px 0; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+        const { createClient } = supabase;
+        const supabaseUrl = 'https://fimdhwhaabryezgramxa.supabase.co';
+        const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZpbWRod2hhYWJyeWV6Z3JhbXhhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMzOTkxNDUsImV4cCI6MjA5ODk3NTE0NX0.eTkZCxDNKQbFCZmBIXjfprESFKUzDuEjaFokvueof6s';
+        const supabaseClient = createClient(supabaseUrl, supabaseKey);
+        function WarehouseApp() {
+            const [products, setProducts] = useState([]);
+            const [locations, setLocations] = useState([]);
+            const [searchTerm, setSearchTerm] = useState('');
+            const [selectedLocation, setSelectedLocation] = useState(null);
+            const [showAddLocation, setShowAddLocation] = useState(false);
+            const [newLocationName, setNewLocationName] = useState('');
+            const [newLocationAddr, setNewLocationAddr] = useState('');
+            const [loading, setLoading] = useState(true);
+            useEffect(() => { loadData(); }, []);
+            const loadData = async () => {
+                setLoading(true);
+                try {
+                    const [productsRes, locationsRes] = await Promise.all([
+                        supabaseClient.from('products').select('*'),
+                        supabaseClient.from('storage_locations').select('*')
+                    ]);
+                    setProducts(productsRes.data || []);
+                    setLocations(locationsRes.data || []);
+                } catch (err) {
+                    console.error('Error loading data:', err);
+                    alert('เกิดข้อผิดพลาดในการโหลดข้อมูล');
+                }
+                setLoading(false);
+            };
+            const addLocation = async () => {
+                if (!newLocationName.trim()) { alert('กรุณาระบุชื่อที่อยู่คลัง'); return; }
+                try {
+                    const { data, error } = await supabaseClient.from('storage_locations').insert([
+                        { name: newLocationName, address: newLocationAddr }
+                    ]).select();
+                    if (error) throw error;
+                    setLocations([...locations, ...data]);
+                    setNewLocationName('');
+                    setNewLocationAddr('');
+                    setShowAddLocation(false);
+                    alert('เพิ่มที่อยู่คลังสำเร็จ');
+                } catch (err) {
+                    console.error('Error adding location:', err);
+                    alert('เกิดข้อผิดพลาด: ' + err.message);
+                }
+            };
+            const filtered = products.filter(p =>
+                (p.product_code?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                 p.name?.toLowerCase().includes(searchTerm.toLowerCase())) &&
+                (selectedLocation === null || selectedLocation === 'all')
+            );
+            return (
+                <div className="container">
+                    <h1>📦 ระบบจัดการคลังสินค้าหลัก</h1>
+                    <div className="search-bar">
+                        <input type="text" placeholder="🔍 ค้นหาสินค้า (รหัส/ชื่อ)..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+                        <button className="btn btn-green" onClick={() => setShowAddLocation(!showAddLocation)}>➕ เพิ่มที่อยู่คลัง</button>
+                    </div>
+                    {showAddLocation && (
+                        <div className="add-location-form">
+                            <h3>สร้างที่อยู่คลังใหม่</h3>
+                            <input type="text" placeholder="ชื่อที่อยู่เก็บ (เช่น: คลัง 1)" value={newLocationName} onChange={(e) => setNewLocationName(e.target.value)} />
+                            <input type="text" placeholder="ที่อยู่ (เช่น: 123/45 ถ.ประชาชื่น)" value={newLocationAddr} onChange={(e) => setNewLocationAddr(e.target.value)} />
+                            <button className="btn btn-blue" onClick={addLocation}>✅ บันทึก</button>
+                            <button className="btn btn-gray" onClick={() => setShowAddLocation(false)}>❌ ยกเลิก</button>
+                        </div>
+                    )}
+                    <div className="filter-section">
+                        <label>📍 กรองตามที่อยู่:</label>
+                        <select value={selectedLocation === null ? 'all' : selectedLocation} onChange={(e) => setSelectedLocation(e.target.value === 'all' ? null : e.target.value)}>
+                            <option value="all">📋 ทั้งหมด ({products.length})</option>
+                            {locations.map(loc => (<option key={loc.id} value={loc.id}>📍 {loc.name}</option>))}
+                        </select>
+                    </div>
+                    {loading ? (
+                        <div className="loading">⏳ กำลังโหลดข้อมูล...</div>
+                    ) : (
+                        <>
+                            <div className="summary">
+                                <strong>📦 พบ {filtered.length} รายการสินค้า</strong>
+                                {locations.length > 0 && <p style={{ margin: '5px 0 0 0', fontSize: '12px' }}>📍 จัดเก็บในที่อยู่ {locations.length} จุด</p>}
+                            </div>
+                            <div className="products-grid">
+                                {filtered.map(product => (
+                                    <div key={product.id} className="product-card">
+                                        <div className="product-card-title">{product.name}</div>
+                                        <div className="product-card-info">🔹 รหัส: <strong>{product.product_code}</strong></div>
+                                        <div className="product-card-info">📂 หมวด: {product.category || '—'}</div>
+                                        <div className="product-card-info">📏 หน่วย: {product.unit || '—'}</div>
+                                        <div className="product-card-info">💵 ราคา: <strong>{product.price || '—'}</strong></div>
+                                        <div className="product-card-price">📍 สถานที่: <strong>click ที่อยู่เพื่อดูสต็อก</strong></div>
+                                    </div>
+                                ))}
+                            </div>
+                            {filtered.length === 0 && <div style={{ textAlign: 'center', color: '#999', marginTop: '40px' }}>ไม่พบสินค้าที่ค้นหา</div>}
+                        </>
+                    )}
+                    <div className="info-box">
+                        <h3>ℹ️ ข้อมูลระบบ</h3>
+                        <p>✅ <strong>สินค้าทั้งหมด:</strong> {products.length} รายการ</p>
+                        <p>📍 <strong>ที่อยู่คลัง:</strong> {locations.length} จุด</p>
+                        <p style={{ marginTop: '10px', fontSize: '12px', color: '#999' }}>Supabase Project: warehouse-main-stock</p>
+                    </div>
+                </div>
+            );
+        }
+        ReactDOM.render(<WarehouseApp />, document.getElementById('root'));
+    </script>
+</body>
+</html>
 
