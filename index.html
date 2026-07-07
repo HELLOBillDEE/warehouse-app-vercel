@@ -882,8 +882,9 @@
                 const staff = staffList.find(s => s.id === selectedId);
                 if (!staff) { setError('เลือกชื่อพนักงาน'); return; }
                 if (!pin || staff.pin_code !== pin) { setError('รหัสไม่ถูกต้อง'); return; }
-                sessionStorage.setItem('warehouse_staff', JSON.stringify({ id: staff.id, name: staff.name }));
-                onLogin({ id: staff.id, name: staff.name });
+                const session = { id: staff.id, name: staff.name, is_admin: !!staff.is_admin };
+                sessionStorage.setItem('warehouse_staff', JSON.stringify(session));
+                onLogin(session);
             };
 
             return (
@@ -918,28 +919,29 @@
         function StaffManagement({ staff, loadData, msg, msgType, flash }) {
             const [name, setName] = useState('');
             const [pinCode, setPinCode] = useState('');
+            const [isAdmin, setIsAdmin] = useState(false);
             const [editId, setEditId] = useState(null);
-            const [editVals, setEditVals] = useState({ name: '', pin_code: '', active: true });
+            const [editVals, setEditVals] = useState({ name: '', pin_code: '', active: true, is_admin: false });
 
             const add = async () => {
                 if (!name.trim() || !pinCode.trim()) { flash('กรอกชื่อและรหัสผ่าน'); return; }
                 try {
-                    await client.from('staff').insert([{ name, pin_code: pinCode }]);
+                    await client.from('staff').insert([{ name, pin_code: pinCode, is_admin: isAdmin }]);
                     flash('เพิ่มพนักงานสำเร็จ', 'success');
-                    setName(''); setPinCode('');
+                    setName(''); setPinCode(''); setIsAdmin(false);
                     await loadData();
                 } catch (err) {
                     flash('Error: ' + err.message, 'error');
                 }
             };
 
-            const startEdit = (s) => { setEditId(s.id); setEditVals({ name: s.name, pin_code: s.pin_code, active: s.active }); };
-            const cancelEdit = () => { setEditId(null); setEditVals({ name: '', pin_code: '', active: true }); };
+            const startEdit = (s) => { setEditId(s.id); setEditVals({ name: s.name, pin_code: s.pin_code, active: s.active, is_admin: !!s.is_admin }); };
+            const cancelEdit = () => { setEditId(null); setEditVals({ name: '', pin_code: '', active: true, is_admin: false }); };
 
             const saveEdit = async (s) => {
                 if (!editVals.name.trim() || !editVals.pin_code.trim()) { flash('กรอกชื่อและรหัสผ่าน'); return; }
                 try {
-                    await client.from('staff').update({ name: editVals.name, pin_code: editVals.pin_code, active: editVals.active }).eq('id', s.id);
+                    await client.from('staff').update({ name: editVals.name, pin_code: editVals.pin_code, active: editVals.active, is_admin: editVals.is_admin }).eq('id', s.id);
                     flash('บันทึกสำเร็จ', 'success');
                     cancelEdit();
                     await loadData();
@@ -974,6 +976,12 @@
                             <input type="text" value={pinCode} onChange={(e) => setPinCode(e.target.value)} />
                         </div>
                     </div>
+                    <div className="form-group">
+                        <label style={{display: 'flex', alignItems: 'center', gap: '6px'}}>
+                            <input type="checkbox" style={{width: 'auto'}} checked={isAdmin} onChange={(e) => setIsAdmin(e.target.checked)} />
+                            เป็นแอดมิน (จัดการพนักงานได้)
+                        </label>
+                    </div>
                     <button onClick={add}>เพิ่มพนักงาน</button>
                     <h3 style={{marginTop: '25px'}}>พนักงานทั้งหมด</h3>
                     {staff.map(s => (
@@ -996,6 +1004,12 @@
                                             ใช้งานอยู่
                                         </label>
                                     </div>
+                                    <div className="form-group">
+                                        <label style={{display: 'flex', alignItems: 'center', gap: '6px'}}>
+                                            <input type="checkbox" style={{width: 'auto'}} checked={editVals.is_admin} onChange={(e) => setEditVals({...editVals, is_admin: e.target.checked})} />
+                                            เป็นแอดมิน (จัดการพนักงานได้)
+                                        </label>
+                                    </div>
                                     <div className="row-actions">
                                         <button onClick={() => saveEdit(s)}>บันทึก</button>
                                         <button className="secondary" onClick={cancelEdit}>ยกเลิก</button>
@@ -1005,6 +1019,7 @@
                                 <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
                                     <div>
                                         <strong>{s.name}</strong>
+                                        {s.is_admin && <span className="badge badge-adj" style={{marginLeft: '8px'}}>แอดมิน</span>}
                                         {!s.active && <span className="badge badge-out" style={{marginLeft: '8px'}}>ปิดใช้งาน</span>}
                                         <div style={{fontSize: '12px', color: 'var(--text-muted)'}}>PIN: {s.pin_code}</div>
                                     </div>
@@ -1105,7 +1120,7 @@
                             <button className={'nav-tab ' + (tab === 'expiry' ? 'active' : '')} onClick={() => { setTab('expiry'); setMsg(''); }}><IconAlert />ใกล้หมดอายุ{soonCount > 0 ? ' (' + soonCount + ')' : ''}</button>
                             <button className={'nav-tab ' + (tab === 'history' ? 'active' : '')} onClick={() => { setTab('history'); setMsg(''); }}><IconHistory />ประวัติ</button>
                             <button className={'nav-tab ' + (tab === 'locations' ? 'active' : '')} onClick={() => { setTab('locations'); setMsg(''); }}><IconPin />ที่อยู่</button>
-                            <button className={'nav-tab ' + (tab === 'staff' ? 'active' : '')} onClick={() => { setTab('staff'); setMsg(''); }}><IconUser />พนักงาน</button>
+                            {currentStaff.is_admin && <button className={'nav-tab ' + (tab === 'staff' ? 'active' : '')} onClick={() => { setTab('staff'); setMsg(''); }}><IconUser />พนักงาน</button>}
                         </div>
                         <div style={{marginTop: 'auto', paddingTop: '16px', borderTop: '1px solid var(--border)'}}>
                             <div style={{fontSize: '12px', color: 'var(--text-muted)', marginBottom: '8px', padding: '0 6px'}}>เข้าสู่ระบบ: <strong style={{color: 'var(--text)'}}>{currentStaff.name}</strong></div>
@@ -1121,7 +1136,7 @@
                         {tab === 'expiry' && <ExpiryAlerts {...shared} />}
                         {tab === 'history' && <History {...shared} />}
                         {tab === 'locations' && <Locations {...shared} />}
-                        {tab === 'staff' && <StaffManagement {...shared} />}
+                        {tab === 'staff' && currentStaff.is_admin && <StaffManagement {...shared} />}
                     </div>
                 </div>
             );
