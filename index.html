@@ -14,7 +14,8 @@
         .container { max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; }
         h1 { color: #333; margin-bottom: 20px; }
         h2 { color: #333; margin: 20px 0 15px 0; font-size: 20px; }
-        .nav-tabs { display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 2px solid #ddd; }
+        h3 { color: #333; font-size: 16px; }
+        .nav-tabs { display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 2px solid #ddd; flex-wrap: wrap; }
         .nav-tab { padding: 10px 20px; cursor: pointer; background: none; border: none; border-bottom: 3px solid transparent; font-size: 14px; }
         .nav-tab.active { border-bottom-color: #007bff; color: #007bff; font-weight: bold; }
         .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 20px; }
@@ -22,11 +23,13 @@
         .stat-value { font-size: 28px; font-weight: bold; color: #007bff; }
         .stat-label { font-size: 12px; color: #666; margin-top: 5px; }
         .form-group { margin-bottom: 15px; }
-        label { display: block; margin-bottom: 5px; font-weight: bold; }
-        input, select, textarea { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
-        button { padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; color: #333; }
+        input, select, textarea { width: 100%; padding: 8px; border: 2px solid #ddd; border-radius: 4px; background: white; color: #333; font-size: 14px; }
+        button { padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold; }
         button:hover { background: #0056b3; }
         button.secondary { background: #6c757d; }
+        button.danger { background: #dc3545; }
+        button.small { padding: 6px 12px; font-size: 12px; }
         .alert { padding: 12px; margin-bottom: 15px; border-radius: 4px; }
         .alert-success { background: #d4edda; color: #155724; }
         .alert-error { background: #f8d7da; color: #721c24; }
@@ -35,6 +38,16 @@
         th { background: #f9f9f9; padding: 10px; text-align: left; border-bottom: 2px solid #ddd; font-weight: bold; }
         td { padding: 10px; border-bottom: 1px solid #ddd; }
         .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; }
+        .card { padding: 12px; background: #f9f9f9; border-radius: 4px; margin-bottom: 15px; }
+        .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: bold; }
+        .badge-in { background: #d4edda; color: #155724; }
+        .badge-out { background: #f8d7da; color: #721c24; }
+        .badge-adj { background: #fff3cd; color: #856404; }
+        .row-actions { display: flex; gap: 8px; margin-top: 10px; }
+        .search-results { border: 1px solid #ddd; max-height: 150px; overflow-y: auto; }
+        .search-result-item { padding: 8px; border-bottom: 1px solid #eee; cursor: pointer; }
+        .search-result-item:hover { background: #f0f0f0; }
     </style>
 </head>
 <body>
@@ -43,18 +56,384 @@
         const { useState, useEffect } = React;
         const { createClient } = supabase;
         const supabaseUrl = 'https://fimdhwhaabryezgramxa.supabase.co';
-        const supabaseKey = 'REDACTED_SERVICE_ROLE_KEY_ROTATED';
+        const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZpbWRod2hhYWJyeWV6Z3JhbXhhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMzOTkxNDUsImV4cCI6MjA5ODk3NTE0NX0.eTkZCxDNKQbFCZmBIXjfprESFKUzDuEjaFokvueof6s';
         const client = createClient(supabaseUrl, supabaseKey);
+
+        const MOVEMENT_LABELS = {
+            receiving: 'รับเข้า',
+            sale: 'ขายหน้าร้าน',
+            transfer: 'โอนสาขา',
+            adjustment: 'ปรับปรุง'
+        };
+
+        function Home({ products, locations, stock, movements }) {
+            const total = stock.reduce((s, x) => s + (parseFloat(x.quantity) || 0), 0);
+            return (
+                <div>
+                    <div className="stats">
+                        <div className="stat-box"><div className="stat-value">{products.length}</div><div className="stat-label">สินค้า</div></div>
+                        <div className="stat-box"><div className="stat-value">{locations.length}</div><div className="stat-label">ที่อยู่</div></div>
+                        <div className="stat-box"><div className="stat-value">{total.toFixed(0)}</div><div className="stat-label">จำนวน</div></div>
+                        <div className="stat-box"><div className="stat-value">{new Set(stock.map(s => s.location_id)).size}</div><div className="stat-label">ใช้งาน</div></div>
+                    </div>
+                    <h2>รายการล่าสุด</h2>
+                    {movements.slice(0, 10).map(m => {
+                        const p = products.find(x => x.id === m.product_id);
+                        const l = locations.find(x => x.id === m.location_id);
+                        const isOut = parseFloat(m.quantity_change) < 0;
+                        return (
+                            <div key={m.id} className="card" style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+                                <div>
+                                    <span className={'badge ' + (m.movement_type === 'adjustment' ? 'badge-adj' : (isOut ? 'badge-out' : 'badge-in'))}>{MOVEMENT_LABELS[m.movement_type] || m.movement_type}</span>
+                                    <strong style={{marginLeft: '8px'}}>{p ? p.product_code + ' - ' + p.name : '-'}</strong>
+                                    <div style={{fontSize: '12px', color: '#666'}}>📍 {l ? l.name : '-'}</div>
+                                </div>
+                                <div style={{textAlign: 'right'}}>
+                                    <div style={{fontWeight: 'bold', color: isOut ? '#721c24' : '#155724'}}>{isOut ? '' : '+'}{m.quantity_change}</div>
+                                    <div style={{fontSize: '11px', color: '#999'}}>{new Date(m.created_at).toLocaleString('th-TH')}</div>
+                                </div>
+                            </div>
+                        );
+                    })}
+                    {movements.length === 0 && <div style={{color: '#999'}}>ยังไม่มีรายการ</div>}
+                </div>
+            );
+        }
+
+        function Receiving({ products, locations, stock, loadData, msg, msgType, flash }) {
+            const [pid, setPid] = useState('');
+            const [pLabel, setPLabel] = useState('');
+            const [lid, setLid] = useState('');
+            const [qty, setQty] = useState('');
+            const [notes, setNotes] = useState('');
+            const [search, setSearch] = useState('');
+            const filtered = products.filter(p => p.product_code?.includes(search.toUpperCase()) || p.name?.includes(search)).slice(0, 20);
+
+            const handle = async () => {
+                if (!pid || !lid || !qty || parseFloat(qty) <= 0) { flash('กรอกข้อมูลให้ครบและจำนวนต้องมากกว่า 0'); return; }
+                try {
+                    const q = parseFloat(qty);
+                    await client.from('receiving_logs').insert([{ product_id: pid, location_id: lid, quantity: q, notes }]);
+                    const s = stock.find(x => x.product_id === pid && x.location_id === lid);
+                    if (s) {
+                        await client.from('product_location_stock').update({ quantity: parseFloat(s.quantity) + q, updated_at: new Date().toISOString() }).eq('id', s.id);
+                    } else {
+                        await client.from('product_location_stock').insert([{ product_id: pid, location_id: lid, quantity: q }]);
+                    }
+                    await client.from('stock_movements').insert([{ product_id: pid, location_id: lid, quantity_change: q, movement_type: 'receiving', notes }]);
+                    flash('บันทึกรับเข้าสำเร็จ', 'success');
+                    setPid(''); setPLabel(''); setLid(''); setQty(''); setSearch(''); setNotes('');
+                    await loadData();
+                } catch (err) {
+                    flash('Error: ' + err.message, 'error');
+                }
+            };
+
+            return (
+                <div>
+                    <h2>รับเข้าสินค้า</h2>
+                    {msg && <div className={'alert alert-' + msgType}>{msg}</div>}
+                    <div className="grid-2">
+                        <div className="form-group">
+                            <label>ค้นหาสินค้า</label>
+                            <input type="text" placeholder="รหัส/ชื่อ" value={pLabel || search} onChange={(e) => { setSearch(e.target.value); setPLabel(''); setPid(''); }} />
+                            {search && !pid && (<div className="search-results">
+                                {filtered.map(p => (<div key={p.id} className="search-result-item" onClick={() => { setPid(p.id); setPLabel(p.product_code + ' - ' + p.name); setSearch(''); }}>{p.product_code} - {p.name}</div>))}
+                            </div>)}
+                        </div>
+                        <div className="form-group">
+                            <label>ที่อยู่คลัง</label>
+                            <select value={lid} onChange={(e) => setLid(e.target.value)}>
+                                <option value="">-- เลือก --</option>
+                                {locations.map(l => (<option key={l.id} value={l.id}>{l.name}</option>))}
+                            </select>
+                        </div>
+                    </div>
+                    <div className="grid-2">
+                        <div className="form-group">
+                            <label>จำนวน</label>
+                            <input type="number" min="1" value={qty} onChange={(e) => setQty(e.target.value)} />
+                        </div>
+                        <div className="form-group">
+                            <label>หมายเหตุ</label>
+                            <input type="text" value={notes} onChange={(e) => setNotes(e.target.value)} />
+                        </div>
+                    </div>
+                    <button onClick={handle}>บันทึกรับเข้า</button>
+                </div>
+            );
+        }
+
+        function IssueStock({ products, locations, stock, loadData, msg, msgType, flash }) {
+            const [pid, setPid] = useState('');
+            const [pLabel, setPLabel] = useState('');
+            const [lid, setLid] = useState('');
+            const [qty, setQty] = useState('');
+            const [issueType, setIssueType] = useState('sale');
+            const [notes, setNotes] = useState('');
+            const [search, setSearch] = useState('');
+            const filtered = products.filter(p => p.product_code?.includes(search.toUpperCase()) || p.name?.includes(search)).slice(0, 20);
+            const availableLocs = stock.filter(s => s.product_id === pid && parseFloat(s.quantity) > 0);
+            const current = stock.find(x => x.product_id === pid && x.location_id === lid);
+
+            const handle = async () => {
+                if (!pid || !lid || !qty || parseFloat(qty) <= 0) { flash('กรอกข้อมูลให้ครบและจำนวนต้องมากกว่า 0'); return; }
+                const q = parseFloat(qty);
+                const s = stock.find(x => x.product_id === pid && x.location_id === lid);
+                const avail = s ? parseFloat(s.quantity) : 0;
+                if (q > avail) { flash('สต็อกไม่พอ (คงเหลือ ' + avail + ')'); return; }
+                try {
+                    await client.from('product_location_stock').update({ quantity: avail - q, updated_at: new Date().toISOString() }).eq('id', s.id);
+                    await client.from('stock_movements').insert([{ product_id: pid, location_id: lid, quantity_change: -q, movement_type: issueType, notes }]);
+                    flash('บันทึกเบิกออกสำเร็จ', 'success');
+                    setPid(''); setPLabel(''); setLid(''); setQty(''); setSearch(''); setNotes('');
+                    await loadData();
+                } catch (err) {
+                    flash('Error: ' + err.message, 'error');
+                }
+            };
+
+            return (
+                <div>
+                    <h2>เบิกสินค้าออก</h2>
+                    {msg && <div className={'alert alert-' + msgType}>{msg}</div>}
+                    <div className="grid-2">
+                        <div className="form-group">
+                            <label>ค้นหาสินค้า</label>
+                            <input type="text" placeholder="รหัส/ชื่อ" value={pLabel || search} onChange={(e) => { setSearch(e.target.value); setPLabel(''); setPid(''); setLid(''); }} />
+                            {search && !pid && (<div className="search-results">
+                                {filtered.map(p => (<div key={p.id} className="search-result-item" onClick={() => { setPid(p.id); setPLabel(p.product_code + ' - ' + p.name); setSearch(''); }}>{p.product_code} - {p.name}</div>))}
+                            </div>)}
+                        </div>
+                        <div className="form-group">
+                            <label>ที่อยู่คลัง (มีสต็อก)</label>
+                            <select value={lid} onChange={(e) => setLid(e.target.value)} disabled={!pid}>
+                                <option value="">-- เลือก --</option>
+                                {availableLocs.map(s => {
+                                    const l = locations.find(x => x.id === s.location_id);
+                                    return (<option key={s.id} value={s.location_id}>{l ? l.name : '-'} (คงเหลือ {s.quantity})</option>);
+                                })}
+                            </select>
+                        </div>
+                    </div>
+                    <div className="grid-3">
+                        <div className="form-group">
+                            <label>จำนวน{current ? ' (คงเหลือ ' + current.quantity + ')' : ''}</label>
+                            <input type="number" min="1" value={qty} onChange={(e) => setQty(e.target.value)} />
+                        </div>
+                        <div className="form-group">
+                            <label>ประเภทการเบิก</label>
+                            <select value={issueType} onChange={(e) => setIssueType(e.target.value)}>
+                                <option value="sale">ขายหน้าร้าน</option>
+                                <option value="transfer">โอนสาขาย่อย</option>
+                            </select>
+                        </div>
+                        <div className="form-group">
+                            <label>หมายเหตุ{issueType === 'transfer' ? ' (ระบุสาขาปลายทาง)' : ''}</label>
+                            <input type="text" value={notes} onChange={(e) => setNotes(e.target.value)} />
+                        </div>
+                    </div>
+                    <button onClick={handle}>บันทึกเบิกออก</button>
+                </div>
+            );
+        }
+
+        function Warehouse({ products, locations, stock, loadData, msg, msgType, flash }) {
+            const [search, setSearch] = useState('');
+            const [editId, setEditId] = useState(null);
+            const [editVals, setEditVals] = useState({});
+            const filtered = products.filter(p => p.product_code?.includes(search.toUpperCase()) || p.name?.includes(search)).slice(0, 50);
+
+            const startEdit = (p) => {
+                const ps = stock.filter(s => s.product_id === p.id);
+                const qtyByLoc = {};
+                ps.forEach(s => { qtyByLoc[s.location_id] = s.quantity; });
+                setEditId(p.id);
+                setEditVals({ name: p.name, unit: p.unit || '', price: p.price || '', qtyByLoc });
+            };
+
+            const cancelEdit = () => { setEditId(null); setEditVals({}); };
+
+            const saveEdit = async (p) => {
+                try {
+                    await client.from('products').update({ name: editVals.name, unit: editVals.unit, price: editVals.price === '' ? null : parseFloat(editVals.price) }).eq('id', p.id);
+                    const ps = stock.filter(s => s.product_id === p.id);
+                    for (const s of ps) {
+                        const newQty = parseFloat(editVals.qtyByLoc[s.location_id]);
+                        const oldQty = parseFloat(s.quantity);
+                        if (!isNaN(newQty) && newQty !== oldQty) {
+                            await client.from('product_location_stock').update({ quantity: newQty, updated_at: new Date().toISOString() }).eq('id', s.id);
+                            await client.from('stock_movements').insert([{ product_id: p.id, location_id: s.location_id, quantity_change: newQty - oldQty, movement_type: 'adjustment', notes: 'แก้ไขจากหน้าคลังสินค้า' }]);
+                        }
+                    }
+                    flash('บันทึกการแก้ไขสำเร็จ', 'success');
+                    cancelEdit();
+                    await loadData();
+                } catch (err) {
+                    flash('Error: ' + err.message, 'error');
+                }
+            };
+
+            return (
+                <div>
+                    <h2>คลังสินค้า</h2>
+                    {msg && <div className={'alert alert-' + msgType}>{msg}</div>}
+                    <input type="text" placeholder="ค้นหา..." value={search} onChange={(e) => setSearch(e.target.value)} style={{marginBottom: '15px'}} />
+                    {filtered.map(p => {
+                        const ps = stock.filter(s => s.product_id === p.id);
+                        const tot = ps.reduce((s, x) => s + (parseFloat(x.quantity) || 0), 0);
+                        const isEditing = editId === p.id;
+                        return (
+                            <div key={p.id} className="card">
+                                {!isEditing && (
+                                    <div>
+                                        <div style={{display: 'flex', justifyContent: 'space-between'}}>
+                                            <div>
+                                                <strong>{p.product_code}</strong> - {p.name}
+                                                <div style={{fontSize: '12px', color: '#666', marginTop: '5px'}}>รวม: {tot.toFixed(0)} {p.unit} {p.price ? '· ราคา ' + p.price + ' บาท' : ''}</div>
+                                            </div>
+                                            <button className="small secondary" onClick={() => startEdit(p)}>แก้ไข</button>
+                                        </div>
+                                        {ps.map(s => {
+                                            const l = locations.find(x => x.id === s.location_id);
+                                            return (<div key={s.id} style={{fontSize: '12px', color: '#666', marginTop: '3px'}}>📍 {l ? l.name : '-'}: {s.quantity}</div>);
+                                        })}
+                                    </div>
+                                )}
+                                {isEditing && (
+                                    <div>
+                                        <div className="grid-3">
+                                            <div className="form-group">
+                                                <label>ชื่อ</label>
+                                                <input type="text" value={editVals.name} onChange={(e) => setEditVals({...editVals, name: e.target.value})} />
+                                            </div>
+                                            <div className="form-group">
+                                                <label>หน่วย</label>
+                                                <input type="text" value={editVals.unit} onChange={(e) => setEditVals({...editVals, unit: e.target.value})} />
+                                            </div>
+                                            <div className="form-group">
+                                                <label>ราคา</label>
+                                                <input type="number" value={editVals.price} onChange={(e) => setEditVals({...editVals, price: e.target.value})} />
+                                            </div>
+                                        </div>
+                                        {ps.map(s => {
+                                            const l = locations.find(x => x.id === s.location_id);
+                                            return (
+                                                <div className="form-group" key={s.id}>
+                                                    <label>จำนวนที่ 📍 {l ? l.name : '-'}</label>
+                                                    <input type="number" value={editVals.qtyByLoc[s.location_id]} onChange={(e) => setEditVals({...editVals, qtyByLoc: {...editVals.qtyByLoc, [s.location_id]: e.target.value}})} />
+                                                </div>
+                                            );
+                                        })}
+                                        <div className="row-actions">
+                                            <button onClick={() => saveEdit(p)}>บันทึก</button>
+                                            <button className="secondary" onClick={cancelEdit}>ยกเลิก</button>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
+                </div>
+            );
+        }
+
+        function History({ products, locations, movements }) {
+            const [filterType, setFilterType] = useState('');
+            const filtered = filterType ? movements.filter(m => m.movement_type === filterType) : movements;
+            return (
+                <div>
+                    <h2>ประวัติการเข้าออก</h2>
+                    <div className="form-group" style={{maxWidth: '250px'}}>
+                        <label>กรองตามประเภท</label>
+                        <select value={filterType} onChange={(e) => setFilterType(e.target.value)}>
+                            <option value="">ทั้งหมด</option>
+                            <option value="receiving">รับเข้า</option>
+                            <option value="sale">ขายหน้าร้าน</option>
+                            <option value="transfer">โอนสาขา</option>
+                            <option value="adjustment">ปรับปรุง</option>
+                        </select>
+                    </div>
+                    <table>
+                        <thead>
+                            <tr><th>วันที่</th><th>สินค้า</th><th>ที่อยู่</th><th>ประเภท</th><th>จำนวนที่เปลี่ยน</th><th>หมายเหตุ</th></tr>
+                        </thead>
+                        <tbody>
+                            {filtered.map(m => {
+                                const p = products.find(x => x.id === m.product_id);
+                                const l = locations.find(x => x.id === m.location_id);
+                                const isOut = parseFloat(m.quantity_change) < 0;
+                                return (
+                                    <tr key={m.id}>
+                                        <td>{new Date(m.created_at).toLocaleString('th-TH')}</td>
+                                        <td>{p ? p.product_code + ' - ' + p.name : '-'}</td>
+                                        <td>{l ? l.name : '-'}</td>
+                                        <td><span className={'badge ' + (m.movement_type === 'adjustment' ? 'badge-adj' : (isOut ? 'badge-out' : 'badge-in'))}>{MOVEMENT_LABELS[m.movement_type] || m.movement_type}</span></td>
+                                        <td style={{color: isOut ? '#721c24' : '#155724', fontWeight: 'bold'}}>{isOut ? '' : '+'}{m.quantity_change}</td>
+                                        <td>{m.notes || '-'}</td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                    {filtered.length === 0 && <div style={{color: '#999', padding: '20px', textAlign: 'center'}}>ไม่มีรายการ</div>}
+                </div>
+            );
+        }
+
+        function Locations({ locations, loadData, msg, msgType, flash }) {
+            const [name, setName] = useState('');
+            const [addr, setAddr] = useState('');
+
+            const add = async () => {
+                if (!name.trim()) { flash('ระบุชื่อ'); return; }
+                try {
+                    await client.from('storage_locations').insert([{ name, address: addr }]);
+                    flash('เพิ่มสำเร็จ', 'success');
+                    setName(''); setAddr('');
+                    await loadData();
+                } catch (err) {
+                    flash('Error: ' + err.message, 'error');
+                }
+            };
+
+            return (
+                <div>
+                    <h2>จัดการที่อยู่</h2>
+                    {msg && <div className={'alert alert-' + msgType}>{msg}</div>}
+                    <div className="grid-2">
+                        <div className="form-group">
+                            <label>ชื่อที่อยู่</label>
+                            <input type="text" value={name} onChange={(e) => setName(e.target.value)} />
+                        </div>
+                        <div className="form-group">
+                            <label>ที่อยู่</label>
+                            <input type="text" value={addr} onChange={(e) => setAddr(e.target.value)} />
+                        </div>
+                    </div>
+                    <button onClick={add}>เพิ่มที่อยู่</button>
+                    <h3 style={{marginTop: '25px'}}>ที่อยู่ทั้งหมด</h3>
+                    {locations.map(l => (<div key={l.id} className="card"><strong>{l.name}</strong><div style={{fontSize: '12px', color: '#666'}}>{l.address}</div></div>))}
+                </div>
+            );
+        }
 
         function App() {
             const [tab, setTab] = useState('home');
             const [products, setProducts] = useState([]);
             const [locations, setLocations] = useState([]);
             const [stock, setStock] = useState([]);
+            const [movements, setMovements] = useState([]);
             const [loading, setLoading] = useState(true);
             const [msg, setMsg] = useState('');
+            const [msgType, setMsgType] = useState('error');
 
             useEffect(() => { loadData(); }, []);
+
+            const flash = (text, type) => {
+                setMsg(text);
+                setMsgType(type || 'error');
+            };
 
             const loadData = async () => {
                 setLoading(true);
@@ -69,164 +448,42 @@
                         }
                         if (!res.data || res.data.length < 1000) break;
                     }
-                    const [locRes, stockRes] = await Promise.all([
+                    const [locRes, stockRes, movRes] = await Promise.all([
                         client.from('storage_locations').select('*'),
-                        client.from('product_location_stock').select('*').limit(10000)
+                        client.from('product_location_stock').select('*').limit(10000),
+                        client.from('stock_movements').select('*').order('created_at', { ascending: false }).limit(300)
                     ]);
                     setProducts(allProds);
                     setLocations(locRes.data || []);
                     setStock(stockRes.data || []);
+                    setMovements(movRes.data || []);
                 } catch (err) {
-                    setMsg('Error: ' + err.message);
+                    flash('Error: ' + err.message, 'error');
                 }
                 setLoading(false);
             };
 
-            const Home = () => {
-                const total = stock.reduce((s, x) => s + (parseFloat(x.quantity) || 0), 0);
-                return (
-                    <div>
-                        <div className="stats">
-                            <div className="stat-box"><div className="stat-value">{products.length}</div><div className="stat-label">สินค้า</div></div>
-                            <div className="stat-box"><div className="stat-value">{locations.length}</div><div className="stat-label">ที่อยู่</div></div>
-                            <div className="stat-box"><div className="stat-value">{total.toFixed(0)}</div><div className="stat-label">จำนวน</div></div>
-                            <div className="stat-box"><div className="stat-value">{new Set(stock.map(s => s.location_id)).size}</div><div className="stat-label">ใช้งาน</div></div>
-                        </div>
-                    </div>
-                );
-            };
-
-            const Receiving = () => {
-                const [pid, setPid] = useState('');
-                const [lid, setLid] = useState('');
-                const [qty, setQty] = useState('');
-                const [search, setSearch] = useState('');
-                const filtered = products.filter(p => p.product_code?.includes(search.toUpperCase()) || p.name?.includes(search)).slice(0, 20);
-
-                const handle = async () => {
-                    if (!pid || !lid || !qty) { setMsg('กรอกข้อมูลให้ครบ'); return; }
-                    try {
-                        await client.from('receiving_logs').insert([{ product_id: pid, location_id: lid, quantity: parseFloat(qty) }]);
-                        const s = stock.find(x => x.product_id === pid && x.location_id === lid);
-                        if (s) {
-                            await client.from('product_location_stock').update({ quantity: parseFloat(s.quantity) + parseFloat(qty) }).eq('id', s.id);
-                        } else {
-                            await client.from('product_location_stock').insert([{ product_id: pid, location_id: lid, quantity: parseFloat(qty) }]);
-                        }
-                        setMsg('บันทึกสำเร็จ');
-                        setPid(''); setLid(''); setQty(''); setSearch('');
-                        await loadData();
-                    } catch (err) {
-                        setMsg('Error: ' + err.message);
-                    }
-                };
-
-                return (
-                    <div>
-                        <h2>รับเข้าสินค้า</h2>
-                        {msg && <div className="alert alert-error">{msg}</div>}
-                        <div className="grid-2">
-                            <div className="form-group">
-                                <label>ค้นหาสินค้า</label>
-                                <input type="text" placeholder="รหัส/ชื่อ" value={search} onChange={(e) => setSearch(e.target.value)} />
-                                {search && (<div style={{border: '1px solid #ddd', maxHeight: '150px', overflowY: 'auto'}}>
-                                    {filtered.map(p => (<div key={p.id} onClick={() => {setPid(p.id); setSearch('');}} style={{padding: '8px', borderBottom: '1px solid #eee', cursor: 'pointer'}}>{p.product_code} - {p.name}</div>))}
-                                </div>)}
-                            </div>
-                            <div className="form-group">
-                                <label>ที่อยู่คลัง</label>
-                                <select value={lid} onChange={(e) => setLid(e.target.value)}>
-                                    <option value="">-- เลือก --</option>
-                                    {locations.map(l => (<option key={l.id} value={l.id}>{l.name}</option>))}
-                                </select>
-                            </div>
-                        </div>
-                        <div className="form-group">
-                            <label>จำนวน</label>
-                            <input type="number" min="1" value={qty} onChange={(e) => setQty(e.target.value)} />
-                        </div>
-                        <button onClick={handle}>บันทึก</button>
-                    </div>
-                );
-            };
-
-            const Warehouse = () => {
-                const [search, setSearch] = useState('');
-                const filtered = products.filter(p => p.product_code?.includes(search.toUpperCase())).slice(0, 50);
-                return (
-                    <div>
-                        <h2>จัดการคลัง</h2>
-                        <input type="text" placeholder="ค้นหา..." value={search} onChange={(e) => setSearch(e.target.value)} style={{marginBottom: '15px'}} />
-                        {filtered.map(p => {
-                            const ps = stock.filter(s => s.product_id === p.id);
-                            const tot = ps.reduce((s, x) => s + (parseFloat(x.quantity) || 0), 0);
-                            return (
-                                <div key={p.id} style={{padding: '12px', background: '#f9f9f9', borderRadius: '4px', marginBottom: '15px'}}>
-                                    <strong>{p.product_code}</strong> - {p.name}
-                                    <div style={{fontSize: '12px', color: '#666', marginTop: '5px'}}>รวม: {tot.toFixed(0)} {p.unit}</div>
-                                    {ps.map(s => {
-                                        const l = locations.find(x => x.id === s.location_id);
-                                        return (<div key={s.id} style={{fontSize: '12px', color: '#666', marginTop: '3px'}}>📍 {l.name}: {s.quantity}</div>);
-                                    })}
-                                </div>
-                            );
-                        })}
-                    </div>
-                );
-            };
-
-            const Locations = () => {
-                const [name, setName] = useState('');
-                const [addr, setAddr] = useState('');
-
-                const add = async () => {
-                    if (!name.trim()) { setMsg('ระบุชื่อ'); return; }
-                    try {
-                        await client.from('storage_locations').insert([{ name, address: addr }]);
-                        setMsg('เพิ่มสำเร็จ');
-                        setName(''); setAddr('');
-                        await loadData();
-                    } catch (err) {
-                        setMsg('Error: ' + err.message);
-                    }
-                };
-
-                return (
-                    <div>
-                        <h2>จัดการที่อยู่</h2>
-                        {msg && <div className="alert alert-error">{msg}</div>}
-                        <div className="grid-2">
-                            <div className="form-group">
-                                <label>ชื่อที่อยู่</label>
-                                <input type="text" value={name} onChange={(e) => setName(e.target.value)} />
-                            </div>
-                            <div className="form-group">
-                                <label>ที่อยู่</label>
-                                <input type="text" value={addr} onChange={(e) => setAddr(e.target.value)} />
-                            </div>
-                        </div>
-                        <button onClick={add}>เพิ่มที่อยู่</button>
-                        <h3 style={{marginTop: '25px'}}>ที่อยู่ทั้งหมด</h3>
-                        {locations.map(l => (<div key={l.id} style={{padding: '12px', background: '#f9f9f9', borderRadius: '4px', marginBottom: '10px'}}><strong>{l.name}</strong><div style={{fontSize: '12px', color: '#666'}}>{l.address}</div></div>))}
-                    </div>
-                );
-            };
-
             if (loading) return <div className="container"><div className="loading">กำลังโหลด...</div></div>;
+
+            const shared = { products, locations, stock, movements, loadData, msg, msgType, flash };
 
             return (
                 <div className="container">
                     <h1>🏭 ระบบจัดการคลังสินค้า</h1>
                     <div className="nav-tabs">
-                        <button className={'nav-tab ' + (tab === 'home' ? 'active' : '')} onClick={() => setTab('home')}>หน้าแรก</button>
-                        <button className={'nav-tab ' + (tab === 'receiving' ? 'active' : '')} onClick={() => setTab('receiving')}>รับเข้า</button>
-                        <button className={'nav-tab ' + (tab === 'warehouse' ? 'active' : '')} onClick={() => setTab('warehouse')}>คลัง</button>
-                        <button className={'nav-tab ' + (tab === 'locations' ? 'active' : '')} onClick={() => setTab('locations')}>ที่อยู่</button>
+                        <button className={'nav-tab ' + (tab === 'home' ? 'active' : '')} onClick={() => { setTab('home'); setMsg(''); }}>หน้าแรก</button>
+                        <button className={'nav-tab ' + (tab === 'receiving' ? 'active' : '')} onClick={() => { setTab('receiving'); setMsg(''); }}>รับเข้า</button>
+                        <button className={'nav-tab ' + (tab === 'issue' ? 'active' : '')} onClick={() => { setTab('issue'); setMsg(''); }}>เบิกออก</button>
+                        <button className={'nav-tab ' + (tab === 'warehouse' ? 'active' : '')} onClick={() => { setTab('warehouse'); setMsg(''); }}>คลังสินค้า</button>
+                        <button className={'nav-tab ' + (tab === 'history' ? 'active' : '')} onClick={() => { setTab('history'); setMsg(''); }}>ประวัติ</button>
+                        <button className={'nav-tab ' + (tab === 'locations' ? 'active' : '')} onClick={() => { setTab('locations'); setMsg(''); }}>ที่อยู่</button>
                     </div>
-                    {tab === 'home' && <Home />}
-                    {tab === 'receiving' && <Receiving />}
-                    {tab === 'warehouse' && <Warehouse />}
-                    {tab === 'locations' && <Locations />}
+                    {tab === 'home' && <Home {...shared} />}
+                    {tab === 'receiving' && <Receiving {...shared} />}
+                    {tab === 'issue' && <IssueStock {...shared} />}
+                    {tab === 'warehouse' && <Warehouse {...shared} />}
+                    {tab === 'history' && <History {...shared} />}
+                    {tab === 'locations' && <Locations {...shared} />}
                 </div>
             );
         }
