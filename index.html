@@ -195,6 +195,7 @@
         const IconAlert = () => (<svg {...iconProps}><path d="M12 3.5l9 16h-18l9-16z" /><path d="M12 10v4" /><circle cx="12" cy="17" r="0.6" fill="currentColor" stroke="none" /></svg>);
         const IconHistory = () => (<svg {...iconProps}><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3.2 2" /></svg>);
         const IconPin = () => (<svg {...iconProps}><path d="M12 21s6.5-6.2 6.5-11.2A6.5 6.5 0 105.5 9.8C5.5 14.8 12 21 12 21z" /><circle cx="12" cy="9.7" r="2.3" /></svg>);
+        const IconUser = () => (<svg {...iconProps}><circle cx="12" cy="8.3" r="3.3" /><path d="M5 20c1-3.9 3.8-5.8 7-5.8s6 1.9 7 5.8" /></svg>);
         const IconLogo = () => (<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="white" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3.5l8 4v9l-8 4-8-4v-9l8-4z" /><path d="M4 7.5l8 4 8-4M12 11.5v9" /></svg>);
 
         function Home({ products, locations, stock, movements }) {
@@ -231,7 +232,7 @@
             );
         }
 
-        function Receiving({ products, locations, stock, loadData, msg, msgType, flash }) {
+        function Receiving({ products, locations, stock, loadData, msg, msgType, flash, staffName }) {
             const [pid, setPid] = useState('');
             const [pLabel, setPLabel] = useState('');
             const [search, setSearch] = useState('');
@@ -265,7 +266,7 @@
                             const { data } = await client.from('product_location_stock').insert([{ product_id: pid, location_id: r.lid, quantity: runningQty[r.lid] }]).select('id');
                             if (data && data[0]) rowIdByLoc[r.lid] = data[0].id;
                         }
-                        await client.from('stock_movements').insert([{ product_id: pid, location_id: r.lid, quantity_change: q, movement_type: 'receiving', notes }]);
+                        await client.from('stock_movements').insert([{ product_id: pid, location_id: r.lid, quantity_change: q, movement_type: 'receiving', notes, staff_name: staffName }]);
                         if (r.lot || r.expiry) {
                             await client.from('stock_lots').insert([{ product_id: pid, location_id: r.lid, lot_number: r.lot || null, expiry_date: r.expiry || null, quantity: q, notes }]);
                         }
@@ -330,7 +331,7 @@
             );
         }
 
-        function IssueStock({ products, locations, stock, loadData, msg, msgType, flash }) {
+        function IssueStock({ products, locations, stock, loadData, msg, msgType, flash, staffName }) {
             const [pid, setPid] = useState('');
             const [pLabel, setPLabel] = useState('');
             const [lid, setLid] = useState('');
@@ -350,7 +351,7 @@
                 if (q > avail) { flash('สต็อกไม่พอ (คงเหลือ ' + avail + ')'); return; }
                 try {
                     await client.from('product_location_stock').update({ quantity: avail - q, updated_at: new Date().toISOString() }).eq('id', s.id);
-                    await client.from('stock_movements').insert([{ product_id: pid, location_id: lid, quantity_change: -q, movement_type: issueType, notes }]);
+                    await client.from('stock_movements').insert([{ product_id: pid, location_id: lid, quantity_change: -q, movement_type: issueType, notes, staff_name: staffName }]);
                     flash('บันทึกเบิกออกสำเร็จ', 'success');
                     setPid(''); setPLabel(''); setLid(''); setQty(''); setSearch(''); setNotes('');
                     await loadData();
@@ -404,7 +405,7 @@
             );
         }
 
-        function Warehouse({ products, locations, stock, loadData, msg, msgType, flash }) {
+        function Warehouse({ products, locations, stock, loadData, msg, msgType, flash, staffName }) {
             const [search, setSearch] = useState('');
             const [editId, setEditId] = useState(null);
             const [editVals, setEditVals] = useState({});
@@ -413,9 +414,16 @@
             const startEdit = (p) => {
                 const ps = stock.filter(s => s.product_id === p.id);
                 const qtyByLoc = {};
-                locations.forEach(l => { const s = ps.find(x => x.location_id === l.id); qtyByLoc[l.id] = s ? s.quantity : 0; });
+                const lotByLoc = {};
+                const expiryByLoc = {};
+                locations.forEach(l => {
+                    const s = ps.find(x => x.location_id === l.id);
+                    qtyByLoc[l.id] = s ? s.quantity : 0;
+                    lotByLoc[l.id] = '';
+                    expiryByLoc[l.id] = '';
+                });
                 setEditId(p.id);
-                setEditVals({ name: p.name, unit: p.unit || '', price: p.price || '', qtyByLoc });
+                setEditVals({ name: p.name, unit: p.unit || '', price: p.price || '', qtyByLoc, lotByLoc, expiryByLoc });
             };
 
             const cancelEdit = () => { setEditId(null); setEditVals({}); };
@@ -434,7 +442,12 @@
                         } else {
                             await client.from('product_location_stock').insert([{ product_id: p.id, location_id: l.id, quantity: newQty }]);
                         }
-                        await client.from('stock_movements').insert([{ product_id: p.id, location_id: l.id, quantity_change: newQty - oldQty, movement_type: 'adjustment', notes: 'แก้ไขจากหน้าคลังสินค้า' }]);
+                        await client.from('stock_movements').insert([{ product_id: p.id, location_id: l.id, quantity_change: newQty - oldQty, movement_type: 'adjustment', notes: 'แก้ไขจากหน้าคลังสินค้า', staff_name: staffName }]);
+                        const lot = editVals.lotByLoc[l.id];
+                        const expiry = editVals.expiryByLoc[l.id];
+                        if (newQty > oldQty && (lot || expiry)) {
+                            await client.from('stock_lots').insert([{ product_id: p.id, location_id: l.id, lot_number: lot || null, expiry_date: expiry || null, quantity: newQty - oldQty, notes: 'แก้ไขจากหน้าคลังสินค้า' }]);
+                        }
                     }
                     flash('บันทึกการแก้ไขสำเร็จ', 'success');
                     cancelEdit();
@@ -490,9 +503,21 @@
                                             </div>
                                         </div>
                                         {locations.map(l => (
-                                            <div className="form-group" key={l.id}>
-                                                <label>จำนวนที่ 📍 {l.name}</label>
-                                                <input type="number" value={editVals.qtyByLoc[l.id]} onChange={(e) => setEditVals({...editVals, qtyByLoc: {...editVals.qtyByLoc, [l.id]: e.target.value}})} />
+                                            <div key={l.id} style={{border: '1px solid var(--border)', borderRadius: '10px', padding: '10px', marginBottom: '10px'}}>
+                                                <div className="form-group" style={{marginBottom: '10px'}}>
+                                                    <label>จำนวนที่ 📍 {l.name}</label>
+                                                    <input type="number" value={editVals.qtyByLoc[l.id]} onChange={(e) => setEditVals({...editVals, qtyByLoc: {...editVals.qtyByLoc, [l.id]: e.target.value}})} />
+                                                </div>
+                                                <div className="grid-2">
+                                                    <div className="form-group">
+                                                        <label>LOT (ถ้าเพิ่มจำนวน)</label>
+                                                        <input type="text" value={editVals.lotByLoc[l.id]} onChange={(e) => setEditVals({...editVals, lotByLoc: {...editVals.lotByLoc, [l.id]: e.target.value}})} />
+                                                    </div>
+                                                    <div className="form-group">
+                                                        <label>วันหมดอายุ (ถ้าเพิ่มจำนวน)</label>
+                                                        <input type="date" value={editVals.expiryByLoc[l.id]} onChange={(e) => setEditVals({...editVals, expiryByLoc: {...editVals.expiryByLoc, [l.id]: e.target.value}})} />
+                                                    </div>
+                                                </div>
                                             </div>
                                         ))}
                                         <div className="row-actions">
@@ -510,7 +535,7 @@
 
         const UNASSIGNED = '__unassigned__';
 
-        function BulkTransfer({ products, locations, stock, loadData, msg, msgType, flash }) {
+        function BulkTransfer({ products, locations, stock, loadData, msg, msgType, flash, staffName }) {
             const [fromLoc, setFromLoc] = useState('');
             const [toLoc, setToLoc] = useState('');
             const [sel, setSel] = useState({});
@@ -566,10 +591,10 @@
                             await client.from('product_location_stock').insert([{ product_id: r.product_id, location_id: toLoc, quantity: q }]);
                         }
                         if (isUnassigned) {
-                            await client.from('stock_movements').insert([{ product_id: r.product_id, location_id: toLoc, quantity_change: q, movement_type: 'receiving', notes: notes || 'กำหนดคลังเริ่มต้น' }]);
+                            await client.from('stock_movements').insert([{ product_id: r.product_id, location_id: toLoc, quantity_change: q, movement_type: 'receiving', notes: notes || 'กำหนดคลังเริ่มต้น', staff_name: staffName }]);
                         } else {
-                            await client.from('stock_movements').insert([{ product_id: r.product_id, location_id: fromLoc, quantity_change: -q, movement_type: 'transfer', notes }]);
-                            await client.from('stock_movements').insert([{ product_id: r.product_id, location_id: toLoc, quantity_change: q, movement_type: 'transfer', notes }]);
+                            await client.from('stock_movements').insert([{ product_id: r.product_id, location_id: fromLoc, quantity_change: -q, movement_type: 'transfer', notes, staff_name: staffName }]);
+                            await client.from('stock_movements').insert([{ product_id: r.product_id, location_id: toLoc, quantity_change: q, movement_type: 'transfer', notes, staff_name: staffName }]);
                         }
                     }
                     flash('บันทึกสำเร็จ (' + chosen.length + ' รายการ)', 'success');
@@ -714,7 +739,7 @@
                     </div>
                     <table>
                         <thead>
-                            <tr><th>วันที่</th><th>สินค้า</th><th>ที่อยู่</th><th>ประเภท</th><th>จำนวนที่เปลี่ยน</th><th>หมายเหตุ</th></tr>
+                            <tr><th>วันที่</th><th>สินค้า</th><th>ที่อยู่</th><th>ประเภท</th><th>จำนวนที่เปลี่ยน</th><th>พนักงาน</th><th>หมายเหตุ</th></tr>
                         </thead>
                         <tbody>
                             {filtered.map(m => {
@@ -728,6 +753,7 @@
                                         <td>{l ? l.name : '-'}</td>
                                         <td><span className={'badge ' + (m.movement_type === 'adjustment' ? 'badge-adj' : (isOut ? 'badge-out' : 'badge-in'))}>{MOVEMENT_LABELS[m.movement_type] || m.movement_type}</span></td>
                                         <td style={{color: isOut ? '#721c24' : '#155724', fontWeight: 'bold'}}>{isOut ? '' : '+'}{m.quantity_change}</td>
+                                        <td>{m.staff_name || '-'}</td>
                                         <td>{m.notes || '-'}</td>
                                     </tr>
                                 );
@@ -837,13 +863,175 @@
             );
         }
 
+        function Login({ onLogin }) {
+            const [staffList, setStaffList] = useState([]);
+            const [loadingStaff, setLoadingStaff] = useState(true);
+            const [selectedId, setSelectedId] = useState('');
+            const [pin, setPin] = useState('');
+            const [error, setError] = useState('');
+
+            useEffect(() => {
+                client.from('staff').select('*').eq('active', true).order('name').then(({ data }) => {
+                    setStaffList(data || []);
+                    setLoadingStaff(false);
+                });
+            }, []);
+
+            const submit = () => {
+                setError('');
+                const staff = staffList.find(s => s.id === selectedId);
+                if (!staff) { setError('เลือกชื่อพนักงาน'); return; }
+                if (!pin || staff.pin_code !== pin) { setError('รหัสไม่ถูกต้อง'); return; }
+                sessionStorage.setItem('warehouse_staff', JSON.stringify({ id: staff.id, name: staff.name }));
+                onLogin({ id: staff.id, name: staff.name });
+            };
+
+            return (
+                <div style={{minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
+                    <div style={{maxWidth: '380px', width: '100%', background: 'var(--card)', borderRadius: '20px', padding: '32px', boxShadow: '0 1px 3px rgba(30,34,51,0.04), 0 12px 32px -12px rgba(30,34,51,0.10)'}}>
+                        <div className="app-header" style={{marginBottom: '22px'}}>
+                            <div className="logo-badge"><IconLogo /></div>
+                            <div>
+                                <h1>ระบบจัดการคลังสินค้า</h1>
+                                <div className="app-subtitle">เข้าสู่ระบบพนักงาน</div>
+                            </div>
+                        </div>
+                        {error && <div className="alert alert-error">{error}</div>}
+                        <div className="form-group">
+                            <label>ชื่อพนักงาน</label>
+                            <select value={selectedId} onChange={(e) => setSelectedId(e.target.value)}>
+                                <option value="">-- เลือก --</option>
+                                {staffList.map(s => (<option key={s.id} value={s.id}>{s.name}</option>))}
+                            </select>
+                        </div>
+                        <div className="form-group">
+                            <label>รหัสผ่าน (PIN)</label>
+                            <input type="password" inputMode="numeric" value={pin} onChange={(e) => setPin(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') submit(); }} />
+                        </div>
+                        <button onClick={submit} style={{width: '100%'}}>เข้าสู่ระบบ</button>
+                        {!loadingStaff && staffList.length === 0 && <div style={{fontSize: '12px', color: 'var(--text-muted)', marginTop: '14px'}}>ยังไม่มีรายชื่อพนักงานในระบบ กรุณาติดต่อผู้ดูแลระบบ</div>}
+                    </div>
+                </div>
+            );
+        }
+
+        function StaffManagement({ staff, loadData, msg, msgType, flash }) {
+            const [name, setName] = useState('');
+            const [pinCode, setPinCode] = useState('');
+            const [editId, setEditId] = useState(null);
+            const [editVals, setEditVals] = useState({ name: '', pin_code: '', active: true });
+
+            const add = async () => {
+                if (!name.trim() || !pinCode.trim()) { flash('กรอกชื่อและรหัสผ่าน'); return; }
+                try {
+                    await client.from('staff').insert([{ name, pin_code: pinCode }]);
+                    flash('เพิ่มพนักงานสำเร็จ', 'success');
+                    setName(''); setPinCode('');
+                    await loadData();
+                } catch (err) {
+                    flash('Error: ' + err.message, 'error');
+                }
+            };
+
+            const startEdit = (s) => { setEditId(s.id); setEditVals({ name: s.name, pin_code: s.pin_code, active: s.active }); };
+            const cancelEdit = () => { setEditId(null); setEditVals({ name: '', pin_code: '', active: true }); };
+
+            const saveEdit = async (s) => {
+                if (!editVals.name.trim() || !editVals.pin_code.trim()) { flash('กรอกชื่อและรหัสผ่าน'); return; }
+                try {
+                    await client.from('staff').update({ name: editVals.name, pin_code: editVals.pin_code, active: editVals.active }).eq('id', s.id);
+                    flash('บันทึกสำเร็จ', 'success');
+                    cancelEdit();
+                    await loadData();
+                } catch (err) {
+                    flash('Error: ' + err.message, 'error');
+                }
+            };
+
+            const remove = async (s) => {
+                if (!confirm('ลบพนักงาน "' + s.name + '" ใช่หรือไม่?')) return;
+                try {
+                    const { error } = await client.from('staff').delete().eq('id', s.id);
+                    if (error) throw error;
+                    flash('ลบสำเร็จ', 'success');
+                    await loadData();
+                } catch (err) {
+                    flash('ลบไม่ได้ อาจมีประวัติการทำงานผูกอยู่กับพนักงานคนนี้', 'error');
+                }
+            };
+
+            return (
+                <div>
+                    <h2>จัดการพนักงาน</h2>
+                    {msg && <div className={'alert alert-' + msgType}>{msg}</div>}
+                    <div className="grid-2">
+                        <div className="form-group">
+                            <label>ชื่อพนักงาน</label>
+                            <input type="text" value={name} onChange={(e) => setName(e.target.value)} />
+                        </div>
+                        <div className="form-group">
+                            <label>รหัสผ่าน (PIN)</label>
+                            <input type="text" value={pinCode} onChange={(e) => setPinCode(e.target.value)} />
+                        </div>
+                    </div>
+                    <button onClick={add}>เพิ่มพนักงาน</button>
+                    <h3 style={{marginTop: '25px'}}>พนักงานทั้งหมด</h3>
+                    {staff.map(s => (
+                        <div key={s.id} className="card">
+                            {editId === s.id ? (
+                                <div>
+                                    <div className="grid-2">
+                                        <div className="form-group">
+                                            <label>ชื่อพนักงาน</label>
+                                            <input type="text" value={editVals.name} onChange={(e) => setEditVals({...editVals, name: e.target.value})} />
+                                        </div>
+                                        <div className="form-group">
+                                            <label>รหัสผ่าน (PIN)</label>
+                                            <input type="text" value={editVals.pin_code} onChange={(e) => setEditVals({...editVals, pin_code: e.target.value})} />
+                                        </div>
+                                    </div>
+                                    <div className="form-group">
+                                        <label style={{display: 'flex', alignItems: 'center', gap: '6px'}}>
+                                            <input type="checkbox" style={{width: 'auto'}} checked={editVals.active} onChange={(e) => setEditVals({...editVals, active: e.target.checked})} />
+                                            ใช้งานอยู่
+                                        </label>
+                                    </div>
+                                    <div className="row-actions">
+                                        <button onClick={() => saveEdit(s)}>บันทึก</button>
+                                        <button className="secondary" onClick={cancelEdit}>ยกเลิก</button>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+                                    <div>
+                                        <strong>{s.name}</strong>
+                                        {!s.active && <span className="badge badge-out" style={{marginLeft: '8px'}}>ปิดใช้งาน</span>}
+                                        <div style={{fontSize: '12px', color: 'var(--text-muted)'}}>PIN: {s.pin_code}</div>
+                                    </div>
+                                    <div className="row-actions">
+                                        <button className="small secondary" onClick={() => startEdit(s)}>แก้ไข</button>
+                                        <button className="small danger" onClick={() => remove(s)}>ลบ</button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    ))}
+                    {staff.length === 0 && <div style={{color: 'var(--text-muted)'}}>ยังไม่มีพนักงาน</div>}
+                </div>
+            );
+        }
+
         function App() {
+            const [currentStaff, setCurrentStaff] = useState(() => {
+                try { return JSON.parse(sessionStorage.getItem('warehouse_staff')); } catch { return null; }
+            });
             const [tab, setTab] = useState('home');
             const [products, setProducts] = useState([]);
             const [locations, setLocations] = useState([]);
             const [stock, setStock] = useState([]);
             const [movements, setMovements] = useState([]);
             const [lots, setLots] = useState([]);
+            const [staff, setStaff] = useState([]);
             const [loading, setLoading] = useState(true);
             const [msg, setMsg] = useState('');
             const [msgType, setMsgType] = useState('error');
@@ -868,26 +1056,34 @@
                         }
                         if (!res.data || res.data.length < 1000) break;
                     }
-                    const [locRes, stockRes, movRes, lotRes] = await Promise.all([
+                    const [locRes, stockRes, movRes, lotRes, staffRes] = await Promise.all([
                         client.from('storage_locations').select('*'),
                         client.from('product_location_stock').select('*').limit(10000),
                         client.from('stock_movements').select('*').order('created_at', { ascending: false }).limit(300),
-                        client.from('stock_lots').select('*').gt('quantity', 0).order('expiry_date', { ascending: true }).limit(2000)
+                        client.from('stock_lots').select('*').gt('quantity', 0).order('expiry_date', { ascending: true }).limit(2000),
+                        client.from('staff').select('*').order('name')
                     ]);
                     setProducts(allProds);
                     setLocations(locRes.data || []);
                     setStock(stockRes.data || []);
                     setMovements(movRes.data || []);
                     setLots(lotRes.data || []);
+                    setStaff(staffRes.data || []);
                 } catch (err) {
                     flash('Error: ' + err.message, 'error');
                 }
                 setLoading(false);
             };
 
+            if (!currentStaff) return <Login onLogin={setCurrentStaff} />;
             if (loading) return <div className="container"><div className="loading">กำลังโหลด...</div></div>;
 
-            const shared = { products, locations, stock, movements, lots, loadData, msg, msgType, flash };
+            const logout = () => {
+                sessionStorage.removeItem('warehouse_staff');
+                setCurrentStaff(null);
+            };
+
+            const shared = { products, locations, stock, movements, lots, staff, loadData, msg, msgType, flash, staffName: currentStaff.name };
             const soonCount = lots.filter(l => l.expiry_date && daysUntil(l.expiry_date) <= 30).length;
 
             return (
@@ -909,6 +1105,11 @@
                             <button className={'nav-tab ' + (tab === 'expiry' ? 'active' : '')} onClick={() => { setTab('expiry'); setMsg(''); }}><IconAlert />ใกล้หมดอายุ{soonCount > 0 ? ' (' + soonCount + ')' : ''}</button>
                             <button className={'nav-tab ' + (tab === 'history' ? 'active' : '')} onClick={() => { setTab('history'); setMsg(''); }}><IconHistory />ประวัติ</button>
                             <button className={'nav-tab ' + (tab === 'locations' ? 'active' : '')} onClick={() => { setTab('locations'); setMsg(''); }}><IconPin />ที่อยู่</button>
+                            <button className={'nav-tab ' + (tab === 'staff' ? 'active' : '')} onClick={() => { setTab('staff'); setMsg(''); }}><IconUser />พนักงาน</button>
+                        </div>
+                        <div style={{marginTop: 'auto', paddingTop: '16px', borderTop: '1px solid var(--border)'}}>
+                            <div style={{fontSize: '12px', color: 'var(--text-muted)', marginBottom: '8px', padding: '0 6px'}}>เข้าสู่ระบบ: <strong style={{color: 'var(--text)'}}>{currentStaff.name}</strong></div>
+                            <button className="secondary small" style={{width: '100%'}} onClick={logout}>ออกจากระบบ</button>
                         </div>
                     </div>
                     <div className="main-content">
@@ -920,6 +1121,7 @@
                         {tab === 'expiry' && <ExpiryAlerts {...shared} />}
                         {tab === 'history' && <History {...shared} />}
                         {tab === 'locations' && <Locations {...shared} />}
+                        {tab === 'staff' && <StaffManagement {...shared} />}
                     </div>
                 </div>
             );
