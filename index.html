@@ -123,12 +123,23 @@
             const loadAllData = async () => {
                 setLoading(true);
                 try {
-                    const [productsRes, locationsRes, stockRes] = await Promise.all([
-                        supabaseClient.from('products').select('*').limit(10000),
+                    // Fetch products in batches (pagination)
+                    let allProducts = [];
+                    for (let i = 0; i < 5; i++) {
+                        const from = i * 1000;
+                        const to = from + 999;
+                        const res = await supabaseClient.from('products').select('*').range(from, to);
+                        if (res.data && res.data.length > 0) {
+                            allProducts = allProducts.concat(res.data);
+                        }
+                        if (!res.data || res.data.length < 1000) break;
+                    }
+                    
+                    const [locationsRes, stockRes] = await Promise.all([
                         supabaseClient.from('storage_locations').select('*'),
                         supabaseClient.from('product_location_stock').select('*').limit(10000)
                     ]);
-                    setProducts(productsRes.data || []);
+                    setProducts(allProducts);
                     setLocations(locationsRes.data || []);
                     setProductLocationStock(stockRes.data || []);
                 } catch (err) {
