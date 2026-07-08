@@ -409,7 +409,31 @@
             const [search, setSearch] = useState('');
             const [editId, setEditId] = useState(null);
             const [editVals, setEditVals] = useState({});
+            const [showAdd, setShowAdd] = useState(false);
+            const [newProd, setNewProd] = useState({ code: '', name: '', unit: '', price: '', category: '' });
             const filtered = products.filter(p => p.product_code?.includes(search.toUpperCase()) || p.name?.includes(search)).slice(0, 50);
+
+            const addProduct = async () => {
+                if (!newProd.code.trim() || !newProd.name.trim()) { flash('กรอกรหัสสินค้าและชื่อสินค้า'); return; }
+                if (products.some(p => p.product_code?.toUpperCase() === newProd.code.trim().toUpperCase())) {
+                    flash('รหัสสินค้า "' + newProd.code + '" มีอยู่แล้ว'); return;
+                }
+                try {
+                    await client.from('products').insert([{
+                        product_code: newProd.code.trim(),
+                        name: newProd.name.trim(),
+                        unit: newProd.unit.trim() || null,
+                        price: newProd.price === '' ? null : parseFloat(newProd.price),
+                        category: newProd.category.trim() || null
+                    }]);
+                    flash('เพิ่มสินค้าใหม่สำเร็จ', 'success');
+                    setNewProd({ code: '', name: '', unit: '', price: '', category: '' });
+                    setShowAdd(false);
+                    await loadData();
+                } catch (err) {
+                    flash('Error: ' + err.message, 'error');
+                }
+            };
 
             const startEdit = (p) => {
                 const ps = stock.filter(s => s.product_id === p.id);
@@ -461,6 +485,38 @@
                 <div>
                     <h2>คลังสินค้า</h2>
                     {msg && <div className={'alert alert-' + msgType}>{msg}</div>}
+                    <div className="row-actions" style={{marginBottom: '15px'}}>
+                        <button className="secondary small" onClick={() => setShowAdd(!showAdd)}>{showAdd ? 'ยกเลิก' : '+ เพิ่มสินค้าใหม่'}</button>
+                    </div>
+                    {showAdd && (
+                        <div className="card" style={{border: '1.5px solid var(--primary)'}}>
+                            <div className="grid-3">
+                                <div className="form-group">
+                                    <label>รหัสสินค้า</label>
+                                    <input type="text" value={newProd.code} onChange={(e) => setNewProd({...newProd, code: e.target.value})} />
+                                </div>
+                                <div className="form-group">
+                                    <label>ชื่อสินค้า</label>
+                                    <input type="text" value={newProd.name} onChange={(e) => setNewProd({...newProd, name: e.target.value})} />
+                                </div>
+                                <div className="form-group">
+                                    <label>หน่วย</label>
+                                    <input type="text" value={newProd.unit} onChange={(e) => setNewProd({...newProd, unit: e.target.value})} />
+                                </div>
+                            </div>
+                            <div className="grid-2">
+                                <div className="form-group">
+                                    <label>ราคา</label>
+                                    <input type="number" value={newProd.price} onChange={(e) => setNewProd({...newProd, price: e.target.value})} />
+                                </div>
+                                <div className="form-group">
+                                    <label>หมวดหมู่ (ถ้ามี)</label>
+                                    <input type="text" value={newProd.category} onChange={(e) => setNewProd({...newProd, category: e.target.value})} />
+                                </div>
+                            </div>
+                            <button onClick={addProduct}>บันทึกสินค้าใหม่</button>
+                        </div>
+                    )}
                     <input type="text" placeholder="ค้นหา..." value={search} onChange={(e) => setSearch(e.target.value)} style={{marginBottom: '15px'}} />
                     {filtered.map(p => {
                         const ps = stock.filter(s => s.product_id === p.id);
