@@ -405,12 +405,12 @@
             );
         }
 
-        function Warehouse({ products, locations, stock, loadData, msg, msgType, flash, staffName }) {
+        function Warehouse({ products, locations, stock, loadData, msg, msgType, flash, staffName, isAdmin }) {
             const [search, setSearch] = useState('');
             const [editId, setEditId] = useState(null);
             const [editVals, setEditVals] = useState({});
             const [showAdd, setShowAdd] = useState(false);
-            const [newProd, setNewProd] = useState({ code: '', name: '', unit: '', price: '', category: '' });
+            const [newProd, setNewProd] = useState({ code: '', name: '', unit: '', price: '', cost: '', wholesalePrice: '', category: '' });
             const filtered = products.filter(p => p.product_code?.includes(search.toUpperCase()) || p.name?.includes(search)).slice(0, 50);
 
             const addProduct = async () => {
@@ -419,15 +419,20 @@
                     flash('รหัสสินค้า "' + newProd.code + '" มีอยู่แล้ว'); return;
                 }
                 try {
-                    await client.from('products').insert([{
+                    const payload = {
                         product_code: newProd.code.trim(),
                         name: newProd.name.trim(),
                         unit: newProd.unit.trim() || null,
                         price: newProd.price === '' ? null : parseFloat(newProd.price),
                         category: newProd.category.trim() || null
-                    }]);
+                    };
+                    if (isAdmin) {
+                        payload.cost = newProd.cost === '' ? null : parseFloat(newProd.cost);
+                        payload.wholesale_price = newProd.wholesalePrice === '' ? null : parseFloat(newProd.wholesalePrice);
+                    }
+                    await client.from('products').insert([payload]);
                     flash('เพิ่มสินค้าใหม่สำเร็จ', 'success');
-                    setNewProd({ code: '', name: '', unit: '', price: '', category: '' });
+                    setNewProd({ code: '', name: '', unit: '', price: '', cost: '', wholesalePrice: '', category: '' });
                     setShowAdd(false);
                     await loadData();
                 } catch (err) {
@@ -447,14 +452,19 @@
                     expiryByLoc[l.id] = '';
                 });
                 setEditId(p.id);
-                setEditVals({ name: p.name, unit: p.unit || '', price: p.price || '', qtyByLoc, lotByLoc, expiryByLoc });
+                setEditVals({ name: p.name, unit: p.unit || '', price: p.price || '', cost: p.cost || '', wholesalePrice: p.wholesale_price || '', qtyByLoc, lotByLoc, expiryByLoc });
             };
 
             const cancelEdit = () => { setEditId(null); setEditVals({}); };
 
             const saveEdit = async (p) => {
                 try {
-                    await client.from('products').update({ name: editVals.name, unit: editVals.unit, price: editVals.price === '' ? null : parseFloat(editVals.price) }).eq('id', p.id);
+                    const payload = { name: editVals.name, unit: editVals.unit, price: editVals.price === '' ? null : parseFloat(editVals.price) };
+                    if (isAdmin) {
+                        payload.cost = editVals.cost === '' ? null : parseFloat(editVals.cost);
+                        payload.wholesale_price = editVals.wholesalePrice === '' ? null : parseFloat(editVals.wholesalePrice);
+                    }
+                    await client.from('products').update(payload).eq('id', p.id);
                     const ps = stock.filter(s => s.product_id === p.id);
                     for (const l of locations) {
                         const s = ps.find(x => x.location_id === l.id);
@@ -514,6 +524,18 @@
                                     <input type="text" value={newProd.category} onChange={(e) => setNewProd({...newProd, category: e.target.value})} />
                                 </div>
                             </div>
+                            {isAdmin && (
+                                <div className="grid-2">
+                                    <div className="form-group">
+                                        <label>ราคาทุน</label>
+                                        <input type="number" value={newProd.cost} onChange={(e) => setNewProd({...newProd, cost: e.target.value})} />
+                                    </div>
+                                    <div className="form-group">
+                                        <label>ราคาส่ง</label>
+                                        <input type="number" value={newProd.wholesalePrice} onChange={(e) => setNewProd({...newProd, wholesalePrice: e.target.value})} />
+                                    </div>
+                                </div>
+                            )}
                             <button onClick={addProduct}>บันทึกสินค้าใหม่</button>
                         </div>
                     )}
@@ -558,6 +580,18 @@
                                                 <input type="number" value={editVals.price} onChange={(e) => setEditVals({...editVals, price: e.target.value})} />
                                             </div>
                                         </div>
+                                        {isAdmin && (
+                                            <div className="grid-2">
+                                                <div className="form-group">
+                                                    <label>ราคาทุน</label>
+                                                    <input type="number" value={editVals.cost} onChange={(e) => setEditVals({...editVals, cost: e.target.value})} />
+                                                </div>
+                                                <div className="form-group">
+                                                    <label>ราคาส่ง</label>
+                                                    <input type="number" value={editVals.wholesalePrice} onChange={(e) => setEditVals({...editVals, wholesalePrice: e.target.value})} />
+                                                </div>
+                                            </div>
+                                        )}
                                         {locations.map(l => (
                                             <div key={l.id} style={{border: '1px solid var(--border)', borderRadius: '10px', padding: '10px', marginBottom: '10px'}}>
                                                 <div className="form-group" style={{marginBottom: '10px'}}>
@@ -1154,7 +1188,7 @@
                 setCurrentStaff(null);
             };
 
-            const shared = { products, locations, stock, movements, lots, staff, loadData, msg, msgType, flash, staffName: currentStaff.name };
+            const shared = { products, locations, stock, movements, lots, staff, loadData, msg, msgType, flash, staffName: currentStaff.name, isAdmin: currentStaff.is_admin };
             const soonCount = lots.filter(l => l.expiry_date && daysUntil(l.expiry_date) <= 30).length;
 
             return (
