@@ -187,6 +187,12 @@
             adjustment: 'ปรับปรุง'
         };
 
+        const formatUnit = (product) => {
+            if (!product) return '';
+            if (product.pack_unit && product.pack_size) return product.pack_unit + '(' + product.pack_size + (product.unit || '') + ')';
+            return product.unit || '';
+        };
+
         const daysUntil = (dateStr) => {
             const today = new Date(); today.setHours(0, 0, 0, 0);
             const target = new Date(dateStr + 'T00:00:00');
@@ -519,7 +525,7 @@
                             <label>ค้นหาสินค้า (ชื่อ/รหัส)</label>
                             <input type="text" placeholder="พิมพ์ชื่อสินค้าหรือรหัส..." value={pLabel || search} onChange={(e) => { setSearch(e.target.value); setPLabel(''); setPid(''); }} />
                             {search && !pid && (<div className="search-results">
-                                {filtered.map(p => (<div key={p.id} className="search-result-item" onClick={() => { setPid(p.id); setPLabel(p.product_code + ' - ' + p.name); setSearch(''); }}>{p.product_code} - {p.name} {p.unit ? '(' + p.unit + ')' : ''}</div>))}
+                                {filtered.map(p => (<div key={p.id} className="search-result-item" onClick={() => { setPid(p.id); setPLabel(p.product_code + ' - ' + p.name); setSearch(''); }}>{p.product_code} - {p.name} {formatUnit(p) ? '(' + formatUnit(p) + ')' : ''}</div>))}
                             </div>)}
                         </div>
                         <div className="grid-3">
@@ -760,6 +766,7 @@
             const [notes, setNotes] = useState('');
             const [search, setSearch] = useState('');
             const filtered = products.filter(p => p.product_code?.includes(search.toUpperCase()) || p.name?.includes(search)).slice(0, 20);
+            const selectedProduct = products.find(p => p.id === pid);
             const availableLocs = stock.filter(s => s.product_id === pid && parseFloat(s.quantity) > 0);
             const current = stock.find(x => x.product_id === pid && x.location_id === lid);
 
@@ -789,7 +796,7 @@
                             <label>ค้นหาสินค้า</label>
                             <input type="text" placeholder="รหัส/ชื่อ" value={pLabel || search} onChange={(e) => { setSearch(e.target.value); setPLabel(''); setPid(''); setLid(''); }} />
                             {search && !pid && (<div className="search-results">
-                                {filtered.map(p => (<div key={p.id} className="search-result-item" onClick={() => { setPid(p.id); setPLabel(p.product_code + ' - ' + p.name); setSearch(''); }}>{p.product_code} - {p.name}</div>))}
+                                {filtered.map(p => (<div key={p.id} className="search-result-item" onClick={() => { setPid(p.id); setPLabel(p.product_code + ' - ' + p.name); setSearch(''); }}>{p.product_code} - {p.name} {formatUnit(p) ? '(' + formatUnit(p) + ')' : ''}</div>))}
                             </div>)}
                         </div>
                         <div className="form-group">
@@ -798,14 +805,14 @@
                                 <option value="">-- เลือก --</option>
                                 {availableLocs.map(s => {
                                     const l = locations.find(x => x.id === s.location_id);
-                                    return (<option key={s.id} value={s.location_id}>{l ? l.name : '-'} (คงเหลือ {s.quantity})</option>);
+                                    return (<option key={s.id} value={s.location_id}>{l ? l.name : '-'} (คงเหลือ {s.quantity} {selectedProduct?.unit || ''})</option>);
                                 })}
                             </select>
                         </div>
                     </div>
                     <div className="grid-3">
                         <div className="form-group">
-                            <label>จำนวน{current ? ' (คงเหลือ ' + current.quantity + ')' : ''}</label>
+                            <label>จำนวน{current ? ' (คงเหลือ ' + current.quantity + ' ' + (selectedProduct?.unit || '') + ')' : ''}</label>
                             <input type="number" min="1" value={qty} onChange={(e) => setQty(e.target.value)} />
                         </div>
                         <div className="form-group">
@@ -973,7 +980,7 @@
                             <label>ค้นหาสินค้า (ชื่อ/รหัส)</label>
                             <input type="text" placeholder="พิมพ์ชื่อสินค้าหรือรหัส..." value={pLabel || search} onChange={(e) => { setSearch(e.target.value); setPLabel(''); setPid(''); }} />
                             {search && !pid && (<div className="search-results">
-                                {filtered.map(p => (<div key={p.id} className="search-result-item" onClick={() => { setPid(p.id); setPLabel(p.product_code + ' - ' + p.name); setSearch(''); }}>{p.product_code} - {p.name} {p.unit ? '(' + p.unit + ')' : ''}</div>))}
+                                {filtered.map(p => (<div key={p.id} className="search-result-item" onClick={() => { setPid(p.id); setPLabel(p.product_code + ' - ' + p.name); setSearch(''); }}>{p.product_code} - {p.name} {formatUnit(p) ? '(' + formatUnit(p) + ')' : ''}</div>))}
                             </div>)}
                         </div>
                         <div className="grid-3">
@@ -1324,7 +1331,7 @@
                                                 <strong>{p.product_code}</strong> - {p.name}
                                                 <div style={{fontSize: '12px', color: '#666', marginTop: '5px'}}>
                                                     รวม: {tot.toFixed(0)} {p.unit} {p.price ? '· ราคา ' + p.price + ' บาท' : ''}
-                                                    {p.pack_unit && p.pack_size ? ' · หน่วยบรรจุ: ' + p.pack_unit + '(' + p.pack_size + p.unit + ')' : ''}
+                                                    {p.pack_unit && p.pack_size ? ' · หน่วยบรรจุ: ' + formatUnit(p) : ''}
                                                 </div>
                                             </div>
                                             <button className="small secondary" onClick={() => startEdit(p)}>แก้ไข</button>
@@ -1510,7 +1517,7 @@
                                         <tr key={r.id}>
                                             <td><input type="checkbox" style={{width: 'auto'}} checked={!!sel[r.id]?.checked} onChange={(e) => toggleRow(r, e.target.checked)} /></td>
                                             <td>{r.product.product_code} - {r.product.name}</td>
-                                            <td>{isUnassigned ? '-' : r.quantity + ' ' + (r.product.unit || '')}</td>
+                                            <td>{isUnassigned ? '-' : r.quantity + ' ' + (r.product.unit || '')} {!isUnassigned && formatUnit(r.product) !== (r.product.unit || '') ? '(' + formatUnit(r.product) + ')' : ''}</td>
                                             <td><input type="number" min="0" max={isUnassigned ? undefined : r.quantity} value={sel[r.id]?.qty ?? r.quantity} onChange={(e) => setQty(r, e.target.value)} disabled={!sel[r.id]?.checked} /></td>
                                         </tr>
                                     ))}
@@ -1573,7 +1580,7 @@
                                         <td>{r.location ? r.location.name : '-'}</td>
                                         <td>{r.lot_number || '-'}</td>
                                         <td>{r.expiry_date}</td>
-                                        <td>{r.quantity} {r.product.unit}</td>
+                                        <td>{r.quantity} {r.product.unit} {formatUnit(r.product) !== (r.product.unit || '') ? '(' + formatUnit(r.product) + ')' : ''}</td>
                                         <td><span className={'badge ' + s.cls}>{s.label}</span></td>
                                     </tr>
                                 );
