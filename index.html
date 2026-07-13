@@ -246,6 +246,29 @@
             return 'PR' + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + pad(d.getHours()) + pad(d.getMinutes()) + pad(d.getSeconds()) + Math.floor(Math.random() * 90 + 10);
         };
 
+        const PACK_UNITS = ['ลัง', 'กล่อง', 'แพ็ค', 'มัด', 'กระสอบ', 'ถัง'];
+        const BASE_UNITS = ['ชิ้น', 'ขวด', 'ซอง', 'ถุง', 'กระป๋อง', 'หลอด', 'อัน', 'กก.', 'ลิตร'];
+
+        function UnitInput({ value, onChange, options, placeholder }) {
+            const isPreset = value === '' || options.includes(value);
+            const [customMode, setCustomMode] = useState(!isPreset);
+            if (customMode) {
+                return (
+                    <div style={{display: 'flex', gap: '6px'}}>
+                        <input type="text" value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} style={{flex: 1}} />
+                        <button type="button" className="secondary small" onClick={() => { setCustomMode(false); onChange(''); }}>เลือกจากรายการ</button>
+                    </div>
+                );
+            }
+            return (
+                <select value={value} onChange={(e) => { if (e.target.value === '__custom__') { setCustomMode(true); onChange(''); } else { onChange(e.target.value); } }}>
+                    <option value="">{placeholder || '-- เลือกหน่วย --'}</option>
+                    {options.map(o => (<option key={o} value={o}>{o}</option>))}
+                    <option value="__custom__">อื่นๆ ระบุเอง...</option>
+                </select>
+            );
+        }
+
         function ReceiptItemRow({ item, isAdmin, canEditCost, onRemove, locations, onUpdate }) {
             const totalBase = (parseFloat(item.packQty) || 0) * (parseFloat(item.packSize) || 1);
             const needsLocation = onUpdate && !item.locationId;
@@ -306,14 +329,18 @@
             const [packUnit, setPackUnit] = useState('');
             const [packSize, setPackSize] = useState('1');
             const [packQty, setPackQty] = useState('');
+            const [baseUnit, setBaseUnit] = useState('');
             const [cost, setCost] = useState('');
             const [wholesale, setWholesale] = useState('');
             const [retail, setRetail] = useState('');
             const [lotNumber, setLotNumber] = useState('');
             const [expiryDate, setExpiryDate] = useState('');
+            const [itemFormKey, setItemFormKey] = useState(0);
 
             const filtered = products.filter(p => p.product_code?.includes(search.toUpperCase()) || p.name?.includes(search)).slice(0, 20);
             const selectedProduct = products.find(p => p.id === pid);
+
+            useEffect(() => { setBaseUnit(selectedProduct?.unit || ''); }, [pid]);
 
             useEffect(() => {
                 if (!receiptId) return;
@@ -350,10 +377,11 @@
                 setItems([...items, {
                     productId: pid, productLabel: pLabel, locationId: lid, locationLabel: locations.find(l => l.id === lid)?.name || '-',
                     packUnit, packSize: parseFloat(packSize) || 1, packQty: parseFloat(packQty),
-                    baseUnit: selectedProduct?.unit || '', costPerBaseUnit: cost, wholesalePrice: wholesale, retailPrice: retail,
+                    baseUnit, costPerBaseUnit: cost, wholesalePrice: wholesale, retailPrice: retail,
                     lotNumber, expiryDate
                 }]);
-                setPid(''); setPLabel(''); setSearch(''); setLid(''); setPackUnit(''); setPackSize('1'); setPackQty('');
+                setItemFormKey(k => k + 1);
+                setPid(''); setPLabel(''); setSearch(''); setLid(''); setPackUnit(''); setBaseUnit(''); setPackSize('1'); setPackQty('');
                 setCost(''); setWholesale(''); setRetail(''); setLotNumber(''); setExpiryDate('');
             };
 
@@ -492,15 +520,19 @@
                                 </select>
                             </div>
                             <div className="form-group">
-                                <label>หน่วยที่รับจากผู้ผลิต (เช่น ลัง)</label>
-                                <input type="text" value={packUnit} onChange={(e) => setPackUnit(e.target.value)} placeholder={selectedProduct?.unit || 'หน่วย'} />
+                                <label>หน่วยที่รับจากผู้ผลิต</label>
+                                <UnitInput key={'pack-' + itemFormKey} value={packUnit} onChange={setPackUnit} options={PACK_UNITS} placeholder="-- เลือกหน่วย --" />
                             </div>
+                            <div className="form-group">
+                                <label>หน่วยย่อย (ที่ใช้ตัดสต็อก)</label>
+                                <UnitInput key={'base-' + itemFormKey + '-' + pid} value={baseUnit} onChange={setBaseUnit} options={BASE_UNITS} placeholder="-- เลือกหน่วยย่อย --" />
+                            </div>
+                        </div>
+                        <div className="grid-3">
                             <div className="form-group">
                                 <label>จำนวนหน่วยต่อแพ็ค</label>
                                 <input type="number" min="1" value={packSize} onChange={(e) => setPackSize(e.target.value)} />
                             </div>
-                        </div>
-                        <div className="grid-3">
                             <div className="form-group">
                                 <label>จำนวนที่รับ ({packUnit || 'หน่วย'})</label>
                                 <input type="number" min="1" value={packQty} onChange={(e) => setPackQty(e.target.value)} />
@@ -509,14 +541,14 @@
                                 <label>LOT (ถ้ามี)</label>
                                 <input type="text" value={lotNumber} onChange={(e) => setLotNumber(e.target.value)} />
                             </div>
-                            <div className="form-group">
-                                <label>วันหมดอายุ (ถ้ามี)</label>
-                                <input type="date" value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} />
-                            </div>
+                        </div>
+                        <div className="form-group">
+                            <label>วันหมดอายุ (ถ้ามี)</label>
+                            <input type="date" value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} style={{maxWidth: '220px'}} />
                         </div>
                         {packQty && packSize && parseFloat(packSize) > 1 && (
                             <div style={{fontSize: '12px', color: 'var(--text-muted)', marginBottom: '10px'}}>
-                                = {(parseFloat(packQty) * parseFloat(packSize)).toFixed(0)} {selectedProduct?.unit || 'หน่วย'} เข้าสต็อก
+                                = {(parseFloat(packQty) * parseFloat(packSize)).toFixed(0)} {baseUnit || 'หน่วย'} เข้าสต็อก
                             </div>
                         )}
                         <div className="grid-3">
@@ -928,7 +960,7 @@
                             </div>
                             <div className="form-group">
                                 <label>หน่วย</label>
-                                <input type="text" value={unit} onChange={(e) => setUnit(e.target.value)} />
+                                <UnitInput key={'po-unit-' + pid} value={unit} onChange={setUnit} options={[...PACK_UNITS, ...BASE_UNITS]} placeholder="-- เลือกหน่วย --" />
                             </div>
                         </div>
                         <button className="secondary" onClick={addItem}>+ เพิ่มรายการ</button>
