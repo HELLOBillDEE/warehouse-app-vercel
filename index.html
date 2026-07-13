@@ -831,10 +831,13 @@
             const [search, setSearch] = useState('');
             const [pid, setPid] = useState('');
             const [pLabel, setPLabel] = useState('');
-            const [qty, setQty] = useState('');
-            const [unit, setUnit] = useState('');
+            const [packUnit, setPackUnit] = useState('');
+            const [packSize, setPackSize] = useState('1');
+            const [packQty, setPackQty] = useState('');
+            const [baseUnit, setBaseUnit] = useState('');
             const [cost, setCost] = useState('');
             const [costLoading, setCostLoading] = useState(false);
+            const [itemFormKey, setItemFormKey] = useState(0);
 
             const filtered = products.filter(p => p.product_code?.includes(search.toUpperCase()) || p.name?.includes(search)).slice(0, 20);
             const selectedProduct = products.find(p => p.id === pid);
@@ -855,7 +858,8 @@
                         const p = products.find(x => x.id === it.product_id);
                         return {
                             id: it.id, productId: it.product_id, productLabel: p ? p.product_code + ' - ' + p.name : '-',
-                            quantity: it.quantity, unit: it.unit || '', unitCost: it.unit_cost ?? ''
+                            packUnit: it.unit || '', packSize: it.pack_size || 1, packQty: it.quantity,
+                            baseUnit: it.base_unit || '', unitCost: it.unit_cost ?? ''
                         };
                     }));
                     setLoading(false);
@@ -863,8 +867,8 @@
             }, [poId]);
 
             useEffect(() => {
-                if (!pid) { setCost(''); setUnit(''); return; }
-                setUnit(selectedProduct?.unit || '');
+                if (!pid) { setCost(''); setBaseUnit(''); return; }
+                setBaseUnit(selectedProduct?.unit || '');
                 setCostLoading(true);
                 (async () => {
                     const { data } = await client.from('purchase_receipt_items').select('cost_per_base_unit, created_at').eq('product_id', pid).not('cost_per_base_unit', 'is', null).order('created_at', { ascending: false }).limit(1);
@@ -878,14 +882,15 @@
             }, [pid]);
 
             const addItem = () => {
-                if (!pid || !qty || parseFloat(qty) <= 0) { flash('เลือกสินค้าและกรอกจำนวนให้ครบ'); return; }
-                setItems([...items, { productId: pid, productLabel: pLabel, quantity: parseFloat(qty), unit, unitCost: cost }]);
-                setPid(''); setPLabel(''); setSearch(''); setQty(''); setUnit(''); setCost('');
+                if (!pid || !packQty || parseFloat(packQty) <= 0) { flash('เลือกสินค้าและกรอกจำนวนให้ครบ'); return; }
+                setItems([...items, { productId: pid, productLabel: pLabel, packUnit, packSize: parseFloat(packSize) || 1, packQty: parseFloat(packQty), baseUnit, unitCost: cost }]);
+                setItemFormKey(k => k + 1);
+                setPid(''); setPLabel(''); setSearch(''); setPackUnit(''); setPackSize('1'); setPackQty(''); setBaseUnit(''); setCost('');
             };
 
             const removeItem = (idx) => setItems(items.filter((_, i) => i !== idx));
 
-            const total = items.reduce((sum, it) => sum + (parseFloat(it.quantity) || 0) * (parseFloat(it.unitCost) || 0), 0);
+            const total = items.reduce((sum, it) => sum + (parseFloat(it.packQty) || 0) * (parseFloat(it.packSize) || 1) * (parseFloat(it.unitCost) || 0), 0);
 
             const persist = async (status) => {
                 if (!supplierName.trim()) { flash('กรอกชื่อผู้ขาย/ซัพพลายเออร์'); return; }
@@ -903,7 +908,8 @@
                         pid2 = data.id;
                     }
                     await client.from('purchase_order_items').insert(items.map(it => ({
-                        po_id: pid2, product_id: it.productId, quantity: it.quantity, unit: it.unit || null,
+                        po_id: pid2, product_id: it.productId, quantity: it.packQty, unit: it.packUnit || null,
+                        pack_size: it.packSize || 1, base_unit: it.baseUnit || null,
                         unit_cost: it.unitCost === '' ? null : parseFloat(it.unitCost)
                     })));
                     if (status === 'ordered') {
@@ -951,35 +957,56 @@
                         </div>
                         <div className="grid-3">
                             <div className="form-group">
-                                <label>จำนวน{unit ? ' (' + unit + ')' : ''}</label>
-                                <input type="number" min="1" value={qty} onChange={(e) => setQty(e.target.value)} />
+                                <label>หน่วยที่รับจากผู้ผลิต</label>
+                                <UnitInput key={'po-pack-' + itemFormKey} value={packUnit} onChange={setPackUnit} options={PACK_UNITS} placeholder="-- เลือกหน่วย --" />
                             </div>
                             <div className="form-group">
-                                <label>ต้นทุน/หน่วย (บาท) {costLoading && '(กำลังดึงราคาล่าสุด...)'}</label>
-                                <input type="number" value={cost} onChange={(e) => setCost(e.target.value)} />
-                            </div>
-                            <div className="form-group">
-                                <label>หน่วย</label>
-                                <UnitInput key={'po-unit-' + pid} value={unit} onChange={setUnit} options={[...PACK_UNITS, ...BASE_UNITS]} placeholder="-- เลือกหน่วย --" />
+                                <label>หน่วยย่อย (ที่ใช้อ้างอิงต้นทุน)</label>
+                                <UnitInput key={'po-base-' + itemFormKey + '-' + pid} value={baseUnit} onChange={setBaseUnit} options={BASE_UNITS} placeholder="-- เลือกหน่วยย่อย --" />
                             </div>
                         </div>
+                        <div className="grid-3">
+                            <div className="form-group">
+                                <label>จำนวนหน่วยต่อแพ็ค</label>
+                                <input type="number" min="1" value={packSize} onChange={(e) => setPackSize(e.target.value)} />
+                            </div>
+                            <div className="form-group">
+                                <label>จำนวนที่สั่งซื้อ ({packUnit || 'หน่วย'})</label>
+                                <input type="number" min="1" value={packQty} onChange={(e) => setPackQty(e.target.value)} />
+                            </div>
+                            <div className="form-group">
+                                <label>ต้นทุน/หน่วยย่อย (บาท) {costLoading && '(กำลังดึงราคาล่าสุด...)'}</label>
+                                <input type="number" value={cost} onChange={(e) => setCost(e.target.value)} />
+                            </div>
+                        </div>
+                        {packQty && packSize && parseFloat(packSize) > 1 && (
+                            <div style={{fontSize: '12px', color: 'var(--text-muted)', marginBottom: '10px'}}>
+                                = {(parseFloat(packQty) * parseFloat(packSize)).toFixed(0)} {baseUnit || 'หน่วย'}
+                            </div>
+                        )}
                         <button className="secondary" onClick={addItem}>+ เพิ่มรายการ</button>
                     </div>
 
                     <h3 style={{marginBottom: '10px'}}>รายการที่เพิ่มแล้ว ({items.length})</h3>
-                    {items.map((it, i) => (
+                    {items.map((it, i) => {
+                        const totalBase = (parseFloat(it.packQty) || 0) * (parseFloat(it.packSize) || 1);
+                        return (
                         <div key={i} style={{border: '1px solid var(--border)', borderRadius: '10px', padding: '10px', marginBottom: '10px'}}>
                             <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'start'}}>
                                 <div>
                                     <strong>{it.productLabel}</strong>
                                     <div style={{fontSize: '12px', color: 'var(--text-muted)', marginTop: '3px'}}>
-                                        จำนวน {it.quantity} {it.unit || ''} × {it.unitCost || 0} บาท = {((parseFloat(it.quantity) || 0) * (parseFloat(it.unitCost) || 0)).toFixed(2)} บาท
+                                        จำนวน {it.packQty} {it.packUnit || it.baseUnit || 'หน่วย'} {it.packSize > 1 ? '× ' + it.packSize + ' = ' + totalBase.toFixed(0) + ' ' + (it.baseUnit || '') : ''}
+                                    </div>
+                                    <div style={{fontSize: '12px', color: 'var(--text-muted)'}}>
+                                        ต้นทุน {it.unitCost || 0} บาท/{it.baseUnit || 'หน่วย'} = รวม {(totalBase * (parseFloat(it.unitCost) || 0)).toFixed(2)} บาท
                                     </div>
                                 </div>
                                 <button className="small danger" onClick={() => removeItem(i)}>ลบ</button>
                             </div>
                         </div>
-                    ))}
+                        );
+                    })}
                     {items.length === 0 && <div style={{color: 'var(--text-muted)', marginBottom: '15px'}}>ยังไม่มีรายการ</div>}
                     {items.length > 0 && <div style={{textAlign: 'right', fontWeight: 600, marginBottom: '15px'}}>รวมทั้งสิ้น: {total.toFixed(2)} บาท</div>}
 
@@ -1012,7 +1039,7 @@
             if (loading) return <div className="loading">กำลังโหลด...</div>;
             if (!po) return <div>ไม่พบใบสั่งซื้อ</div>;
 
-            const total = items.reduce((sum, it) => sum + (parseFloat(it.quantity) || 0) * (parseFloat(it.unit_cost) || 0), 0);
+            const total = items.reduce((sum, it) => sum + (parseFloat(it.quantity) || 0) * (parseFloat(it.pack_size) || 1) * (parseFloat(it.unit_cost) || 0), 0);
 
             const receiveFromThis = () => {
                 onReceiveFromPo({
@@ -1024,8 +1051,8 @@
                         return {
                             productId: it.product_id, productLabel: p ? p.product_code + ' - ' + p.name : '-',
                             locationId: '', locationLabel: '',
-                            packUnit: it.unit || '', packSize: 1, packQty: it.quantity,
-                            baseUnit: p?.unit || it.unit || '', costPerBaseUnit: it.unit_cost ?? '',
+                            packUnit: it.unit || '', packSize: it.pack_size || 1, packQty: it.quantity,
+                            baseUnit: it.base_unit || p?.unit || '', costPerBaseUnit: it.unit_cost ?? '',
                             lotNumber: '', expiryDate: ''
                         };
                     })
@@ -1045,16 +1072,17 @@
                         </div>
                         <h3 style={{marginBottom: '10px'}}>รายการสินค้า</h3>
                         <table>
-                            <thead><tr><th>สินค้า</th><th>จำนวน</th><th>ต้นทุน/หน่วย</th><th>รวม</th></tr></thead>
+                            <thead><tr><th>สินค้า</th><th>จำนวน</th><th>ต้นทุน/หน่วยย่อย</th><th>รวม</th></tr></thead>
                             <tbody>
                                 {items.map(it => {
                                     const p = products.find(x => x.id === it.product_id);
+                                    const totalBase = (parseFloat(it.quantity) || 0) * (parseFloat(it.pack_size) || 1);
                                     return (
                                         <tr key={it.id}>
                                             <td>{p ? p.product_code + ' - ' + p.name : '-'}</td>
-                                            <td>{it.quantity} {it.unit || ''}</td>
+                                            <td>{it.quantity} {it.unit || ''} {it.pack_size > 1 ? '(= ' + totalBase.toFixed(0) + ' ' + (it.base_unit || '') + ')' : ''}</td>
                                             <td>{it.unit_cost ?? '-'}</td>
-                                            <td>{((parseFloat(it.quantity) || 0) * (parseFloat(it.unit_cost) || 0)).toFixed(2)}</td>
+                                            <td>{(totalBase * (parseFloat(it.unit_cost) || 0)).toFixed(2)}</td>
                                         </tr>
                                     );
                                 })}
