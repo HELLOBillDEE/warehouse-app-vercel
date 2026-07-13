@@ -1289,7 +1289,7 @@
                                 </div>
                                 <div className="form-group">
                                     <label>หน่วย</label>
-                                    <input type="text" value={newProd.unit} onChange={(e) => setNewProd({...newProd, unit: e.target.value})} />
+                                    <UnitInput value={newProd.unit} onChange={(v) => setNewProd({...newProd, unit: v})} options={BASE_UNITS} placeholder="-- เลือกหน่วย --" />
                                 </div>
                             </div>
                             <div className="grid-2">
@@ -1354,7 +1354,7 @@
                                             </div>
                                             <div className="form-group">
                                                 <label>หน่วย</label>
-                                                <input type="text" value={editVals.unit} onChange={(e) => setEditVals({...editVals, unit: e.target.value})} />
+                                                <UnitInput value={editVals.unit} onChange={(v) => setEditVals({...editVals, unit: v})} options={BASE_UNITS} placeholder="-- เลือกหน่วย --" />
                                             </div>
                                             <div className="form-group">
                                                 <label>ราคา</label>
