@@ -312,7 +312,7 @@
             );
         }
 
-        function ReceiptForm({ receiptId, products, locations, staffName, isAdmin, flash, onDone, onCancel, seed }) {
+        function ReceiptForm({ receiptId, products, locations, suppliers, staffName, isAdmin, flash, onDone, onCancel, seed }) {
             const [loading, setLoading] = useState(!!receiptId);
             const [supplierName, setSupplierName] = useState(seed?.supplierName || '');
             const [supplierRefNo, setSupplierRefNo] = useState(seed?.supplierRefNo || '');
@@ -340,7 +340,12 @@
             const filtered = products.filter(p => p.product_code?.includes(search.toUpperCase()) || p.name?.includes(search)).slice(0, 20);
             const selectedProduct = products.find(p => p.id === pid);
 
-            useEffect(() => { setBaseUnit(selectedProduct?.unit || ''); }, [pid]);
+            useEffect(() => {
+                if (!pid) return;
+                setBaseUnit(selectedProduct?.unit || '');
+                if (selectedProduct?.pack_unit) setPackUnit(selectedProduct.pack_unit);
+                if (selectedProduct?.pack_size) setPackSize(String(selectedProduct.pack_size));
+            }, [pid]);
 
             useEffect(() => {
                 if (!receiptId) return;
@@ -410,6 +415,9 @@
                 if (items.some(it => !it.locationId)) { flash('กรุณาเลือกสถานที่จัดเก็บให้ครบทุกรายการก่อนบันทึก'); return; }
                 setSaving(true);
                 try {
+                    if (!suppliers.some(s => s.name === supplierName.trim())) {
+                        await client.from('suppliers').insert([{ name: supplierName.trim() }]).select().then(() => {}, () => {});
+                    }
                     let rid = receiptId;
                     const header = { supplier_name: supplierName.trim(), supplier_ref_no: supplierRefNo.trim() || null, receipt_date: receiptDate, notes: notes.trim() || null };
                     if (rid) {
@@ -444,6 +452,9 @@
                             if (it.lotNumber || it.expiryDate) {
                                 await client.from('stock_lots').insert([{ product_id: it.productId, location_id: it.locationId, lot_number: it.lotNumber || null, expiry_date: it.expiryDate || null, quantity: totalQty, notes: 'รับเข้าจากใบ ' + (supplierRefNo || '') }]);
                             }
+                            if (it.packUnit && it.packSize) {
+                                await client.from('products').update({ pack_unit: it.packUnit, pack_size: it.packSize }).eq('id', it.productId);
+                            }
                         }
                         await client.from('purchase_receipts').update({ status: 'finalized', finalized_at: new Date().toISOString() }).eq('id', rid);
                         flash('ยืนยันรับเข้าสำเร็จ สต็อกถูกอัปเดตแล้ว', 'success');
@@ -466,7 +477,7 @@
                     <div className="grid-3">
                         <div className="form-group">
                             <label>รับมาจาก/บริษัท *</label>
-                            <input type="text" value={supplierName} onChange={(e) => setSupplierName(e.target.value)} />
+                            <UnitInput value={supplierName} onChange={setSupplierName} options={suppliers.map(s => s.name)} placeholder="-- เลือกผู้ขาย/ซัพพลายเออร์ --" />
                         </div>
                         <div className="form-group">
                             <label>เลขที่ใบส่งของ/ใบแจ้งหนี้ (ถ้ามี)</label>
@@ -684,7 +695,7 @@
             );
         }
 
-        function Receiving({ products, locations, loadData, msg, msgType, flash, staffName, isAdmin, receiveSeed, clearReceiveSeed }) {
+        function Receiving({ products, locations, suppliers, loadData, msg, msgType, flash, staffName, isAdmin, receiveSeed, clearReceiveSeed }) {
             const [receipts, setReceipts] = useState([]);
             const [loadingList, setLoadingList] = useState(true);
             const [view, setView] = useState(receiveSeed ? 'form' : 'list');
@@ -705,7 +716,7 @@
             const filtered = filterStatus ? receipts.filter(r => r.status === filterStatus) : receipts;
 
             if (view === 'form') {
-                return <ReceiptForm receiptId={activeId} products={products} locations={locations} staffName={staffName} isAdmin={isAdmin} flash={flash} onDone={backToList} onCancel={backToList} seed={activeId ? null : receiveSeed} />;
+                return <ReceiptForm receiptId={activeId} products={products} locations={locations} suppliers={suppliers} staffName={staffName} isAdmin={isAdmin} flash={flash} onDone={backToList} onCancel={backToList} seed={activeId ? null : receiveSeed} />;
             }
             if (view === 'detail') {
                 return <ReceiptDetail receiptId={activeId} products={products} locations={locations} isAdmin={isAdmin} flash={flash} onBack={backToList} onChanged={loadData} />;
@@ -820,7 +831,7 @@
             return 'PO' + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + pad(d.getHours()) + pad(d.getMinutes()) + pad(d.getSeconds()) + Math.floor(Math.random() * 90 + 10);
         };
 
-        function PoForm({ poId, products, staffName, flash, onDone, onCancel }) {
+        function PoForm({ poId, products, suppliers, staffName, flash, onDone, onCancel }) {
             const [loading, setLoading] = useState(!!poId);
             const [supplierName, setSupplierName] = useState('');
             const [orderDate, setOrderDate] = useState(new Date().toISOString().slice(0, 10));
@@ -869,6 +880,8 @@
             useEffect(() => {
                 if (!pid) { setCost(''); setBaseUnit(''); return; }
                 setBaseUnit(selectedProduct?.unit || '');
+                if (selectedProduct?.pack_unit) setPackUnit(selectedProduct.pack_unit);
+                if (selectedProduct?.pack_size) setPackSize(String(selectedProduct.pack_size));
                 setCostLoading(true);
                 (async () => {
                     const { data } = await client.from('purchase_receipt_items').select('cost_per_base_unit, created_at').eq('product_id', pid).not('cost_per_base_unit', 'is', null).order('created_at', { ascending: false }).limit(1);
@@ -897,6 +910,9 @@
                 if (items.length === 0) { flash('เพิ่มรายการสินค้าอย่างน้อย 1 รายการ'); return; }
                 setSaving(true);
                 try {
+                    if (!suppliers.some(s => s.name === supplierName.trim())) {
+                        await client.from('suppliers').insert([{ name: supplierName.trim() }]).select().then(() => {}, () => {});
+                    }
                     let pid2 = poId;
                     const header = { supplier_name: supplierName.trim(), order_date: orderDate, notes: notes.trim() || null };
                     if (pid2) {
@@ -913,6 +929,11 @@
                         unit_cost: it.unitCost === '' ? null : parseFloat(it.unitCost)
                     })));
                     if (status === 'ordered') {
+                        for (const it of items) {
+                            if (it.packUnit && it.packSize) {
+                                await client.from('products').update({ pack_unit: it.packUnit, pack_size: it.packSize }).eq('id', it.productId);
+                            }
+                        }
                         await client.from('purchase_orders').update({ status: 'ordered', ordered_at: new Date().toISOString() }).eq('id', pid2);
                         flash('ยืนยันใบสั่งซื้อสำเร็จ', 'success');
                     } else {
@@ -934,7 +955,7 @@
                     <div className="grid-2">
                         <div className="form-group">
                             <label>ผู้ขาย/ซัพพลายเออร์ *</label>
-                            <input type="text" value={supplierName} onChange={(e) => setSupplierName(e.target.value)} />
+                            <UnitInput value={supplierName} onChange={setSupplierName} options={suppliers.map(s => s.name)} placeholder="-- เลือกผู้ขาย/ซัพพลายเออร์ --" />
                         </div>
                         <div className="form-group">
                             <label>วันที่สั่งซื้อ</label>
@@ -1099,7 +1120,7 @@
             );
         }
 
-        function PurchaseOrders({ products, loadData, msg, msgType, flash, staffName, goReceiveFromPo }) {
+        function PurchaseOrders({ products, suppliers, loadData, msg, msgType, flash, staffName, goReceiveFromPo }) {
             const [pos, setPos] = useState([]);
             const [loadingList, setLoadingList] = useState(true);
             const [view, setView] = useState('list');
@@ -1120,7 +1141,7 @@
             const filtered = filterStatus ? pos.filter(p => p.status === filterStatus) : pos;
 
             if (view === 'form') {
-                return <PoForm poId={activeId} products={products} staffName={staffName} flash={flash} onDone={backToList} onCancel={backToList} />;
+                return <PoForm poId={activeId} products={products} suppliers={suppliers} staffName={staffName} flash={flash} onDone={backToList} onCancel={backToList} />;
             }
             if (view === 'detail') {
                 return <PoDetail poId={activeId} products={products} onBack={backToList} onReceiveFromPo={goReceiveFromPo} />;
@@ -1301,7 +1322,10 @@
                                         <div style={{display: 'flex', justifyContent: 'space-between'}}>
                                             <div>
                                                 <strong>{p.product_code}</strong> - {p.name}
-                                                <div style={{fontSize: '12px', color: '#666', marginTop: '5px'}}>รวม: {tot.toFixed(0)} {p.unit} {p.price ? '· ราคา ' + p.price + ' บาท' : ''}</div>
+                                                <div style={{fontSize: '12px', color: '#666', marginTop: '5px'}}>
+                                                    รวม: {tot.toFixed(0)} {p.unit} {p.price ? '· ราคา ' + p.price + ' บาท' : ''}
+                                                    {p.pack_unit && p.pack_size ? ' · หน่วยบรรจุ: ' + p.pack_unit + '(' + p.pack_size + p.unit + ')' : ''}
+                                                </div>
                                             </div>
                                             <button className="small secondary" onClick={() => startEdit(p)}>แก้ไข</button>
                                         </div>
@@ -1887,6 +1911,7 @@
             const [movements, setMovements] = useState([]);
             const [lots, setLots] = useState([]);
             const [staff, setStaff] = useState([]);
+            const [suppliers, setSuppliers] = useState([]);
             const [loading, setLoading] = useState(true);
             const [msg, setMsg] = useState('');
             const [msgType, setMsgType] = useState('error');
@@ -1918,12 +1943,13 @@
                         }
                         if (!res.data || res.data.length < 1000) break;
                     }
-                    const [locRes, stockRes, movRes, lotRes, staffRes] = await Promise.all([
+                    const [locRes, stockRes, movRes, lotRes, staffRes, supplierRes] = await Promise.all([
                         client.from('storage_locations').select('*'),
                         client.from('product_location_stock').select('*').limit(10000),
                         client.from('stock_movements').select('*').order('created_at', { ascending: false }).limit(300),
                         client.from('stock_lots').select('*').gt('quantity', 0).order('expiry_date', { ascending: true }).limit(2000),
-                        client.from('staff').select('*').order('name')
+                        client.from('staff').select('*').order('name'),
+                        client.from('suppliers').select('*').order('name')
                     ]);
                     setProducts(allProds);
                     setLocations(locRes.data || []);
@@ -1931,6 +1957,7 @@
                     setMovements(movRes.data || []);
                     setLots(lotRes.data || []);
                     setStaff(staffRes.data || []);
+                    setSuppliers(supplierRes.data || []);
                 } catch (err) {
                     flash('Error: ' + err.message, 'error');
                 }
@@ -1945,7 +1972,7 @@
                 setCurrentStaff(null);
             };
 
-            const shared = { products, locations, stock, movements, lots, staff, loadData, msg, msgType, flash, staffName: currentStaff.name, isAdmin: currentStaff.is_admin, receiveSeed, clearReceiveSeed: () => setReceiveSeed(null), goReceiveFromPo };
+            const shared = { products, locations, stock, movements, lots, staff, suppliers, loadData, msg, msgType, flash, staffName: currentStaff.name, isAdmin: currentStaff.is_admin, receiveSeed, clearReceiveSeed: () => setReceiveSeed(null), goReceiveFromPo };
             const soonCount = lots.filter(l => l.expiry_date && daysUntil(l.expiry_date) <= 30).length;
 
             return (
