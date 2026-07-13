@@ -232,101 +232,441 @@
             );
         }
 
-        function Receiving({ products, locations, stock, loadData, msg, msgType, flash, staffName }) {
+        const genReceiptNo = () => {
+            const d = new Date();
+            const pad = (n) => String(n).padStart(2, '0');
+            return 'PR' + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + pad(d.getHours()) + pad(d.getMinutes()) + pad(d.getSeconds()) + Math.floor(Math.random() * 90 + 10);
+        };
+
+        function ReceiptItemRow({ item, isAdmin, canEditCost, onRemove }) {
+            const totalBase = (parseFloat(item.packQty) || 0) * (parseFloat(item.packSize) || 1);
+            return (
+                <div style={{border: '1px solid var(--border)', borderRadius: '10px', padding: '10px', marginBottom: '10px'}}>
+                    <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'start'}}>
+                        <div>
+                            <strong>{item.productLabel}</strong>
+                            <div style={{fontSize: '12px', color: 'var(--text-muted)', marginTop: '3px'}}>
+                                📍 {item.locationLabel} · {item.packQty || 0} {item.packUnit || item.baseUnit || 'หน่วย'} {item.packSize > 1 ? '× ' + item.packSize + ' = ' + totalBase.toFixed(0) + ' ' + (item.baseUnit || '') : ''}
+                            </div>
+                            {item.lotNumber && <div style={{fontSize: '12px', color: 'var(--text-muted)'}}>LOT: {item.lotNumber}{item.expiryDate ? ' · หมดอายุ ' + item.expiryDate : ''}</div>}
+                            {(isAdmin || canEditCost) && item.costPerBaseUnit !== '' && <div style={{fontSize: '12px', color: 'var(--text-muted)'}}>ต้นทุน/หน่วย: {item.costPerBaseUnit} บาท</div>}
+                        </div>
+                        {onRemove && <button className="small danger" onClick={onRemove}>ลบ</button>}
+                    </div>
+                </div>
+            );
+        }
+
+        function ReceiptForm({ receiptId, products, locations, staffName, isAdmin, flash, onDone, onCancel }) {
+            const [loading, setLoading] = useState(!!receiptId);
+            const [supplierName, setSupplierName] = useState('');
+            const [supplierRefNo, setSupplierRefNo] = useState('');
+            const [receiptDate, setReceiptDate] = useState(new Date().toISOString().slice(0, 10));
+            const [notes, setNotes] = useState('');
+            const [items, setItems] = useState([]);
+            const [photos, setPhotos] = useState([]);
+            const [saving, setSaving] = useState(false);
+
+            const [search, setSearch] = useState('');
             const [pid, setPid] = useState('');
             const [pLabel, setPLabel] = useState('');
-            const [search, setSearch] = useState('');
-            const [notes, setNotes] = useState('');
-            const [rows, setRows] = useState([{ lid: '', qty: '', lot: '', expiry: '' }]);
+            const [lid, setLid] = useState('');
+            const [packUnit, setPackUnit] = useState('');
+            const [packSize, setPackSize] = useState('1');
+            const [packQty, setPackQty] = useState('');
+            const [cost, setCost] = useState('');
+            const [wholesale, setWholesale] = useState('');
+            const [retail, setRetail] = useState('');
+            const [lotNumber, setLotNumber] = useState('');
+            const [expiryDate, setExpiryDate] = useState('');
+
             const filtered = products.filter(p => p.product_code?.includes(search.toUpperCase()) || p.name?.includes(search)).slice(0, 20);
-            const product = products.find(p => p.id === pid);
+            const selectedProduct = products.find(p => p.id === pid);
 
-            const setRow = (i, patch) => setRows(rows.map((r, idx) => idx === i ? { ...r, ...patch } : r));
-            const addRow = () => setRows([...rows, { lid: '', qty: '', lot: '', expiry: '' }]);
-            const removeRow = (i) => setRows(rows.filter((_, idx) => idx !== i));
+            useEffect(() => {
+                if (!receiptId) return;
+                (async () => {
+                    const [{ data: r }, { data: its }, { data: phs }] = await Promise.all([
+                        client.from('purchase_receipts').select('*').eq('id', receiptId).single(),
+                        client.from('purchase_receipt_items').select('*').eq('receipt_id', receiptId),
+                        client.from('purchase_receipt_photos').select('*').eq('receipt_id', receiptId)
+                    ]);
+                    if (r) {
+                        setSupplierName(r.supplier_name || '');
+                        setSupplierRefNo(r.supplier_ref_no || '');
+                        setReceiptDate(r.receipt_date || new Date().toISOString().slice(0, 10));
+                        setNotes(r.notes || '');
+                    }
+                    setItems((its || []).map(it => {
+                        const p = products.find(x => x.id === it.product_id);
+                        const l = locations.find(x => x.id === it.location_id);
+                        return {
+                            id: it.id, productId: it.product_id, productLabel: p ? p.product_code + ' - ' + p.name : '-',
+                            locationId: it.location_id, locationLabel: l ? l.name : '-',
+                            packUnit: it.pack_unit || '', packSize: it.pack_size, packQty: it.pack_qty,
+                            baseUnit: it.base_unit || '', costPerBaseUnit: it.cost_per_base_unit ?? '',
+                            lotNumber: it.lot_number || '', expiryDate: it.expiry_date || ''
+                        };
+                    }));
+                    setPhotos((phs || []).map(ph => ({ id: ph.id, url: ph.photo_url })));
+                    setLoading(false);
+                })();
+            }, [receiptId]);
 
-            const handle = async () => {
-                const validRows = rows.filter(r => r.lid && r.qty && parseFloat(r.qty) > 0);
-                if (!pid || validRows.length === 0) { flash('เลือกสินค้าและกรอกที่อยู่กับจำนวนอย่างน้อย 1 แถว'); return; }
+            const addItem = () => {
+                if (!pid || !lid || !packQty || parseFloat(packQty) <= 0) { flash('เลือกสินค้า ที่อยู่ และกรอกจำนวนให้ครบ'); return; }
+                setItems([...items, {
+                    productId: pid, productLabel: pLabel, locationId: lid, locationLabel: locations.find(l => l.id === lid)?.name || '-',
+                    packUnit, packSize: parseFloat(packSize) || 1, packQty: parseFloat(packQty),
+                    baseUnit: selectedProduct?.unit || '', costPerBaseUnit: cost, wholesalePrice: wholesale, retailPrice: retail,
+                    lotNumber, expiryDate
+                }]);
+                setPid(''); setPLabel(''); setSearch(''); setLid(''); setPackUnit(''); setPackSize('1'); setPackQty('');
+                setCost(''); setWholesale(''); setRetail(''); setLotNumber(''); setExpiryDate('');
+            };
+
+            const removeItem = (idx) => setItems(items.filter((_, i) => i !== idx));
+
+            const handlePhotoFile = async (file) => {
+                if (!file) return;
                 try {
-                    const runningQty = {};
-                    const rowIdByLoc = {};
-                    for (const r of validRows) {
-                        const q = parseFloat(r.qty);
-                        await client.from('receiving_logs').insert([{ product_id: pid, location_id: r.lid, quantity: q, notes }]);
-                        if (!(r.lid in runningQty)) {
-                            const s = stock.find(x => x.product_id === pid && x.location_id === r.lid);
-                            runningQty[r.lid] = s ? parseFloat(s.quantity) : 0;
-                            if (s) rowIdByLoc[r.lid] = s.id;
+                    const ext = file.name.split('.').pop() || 'jpg';
+                    const path = Date.now() + '_' + Math.floor(Math.random() * 10000) + '.' + ext;
+                    const { error } = await client.storage.from('receipt-photos').upload(path, file);
+                    if (error) throw error;
+                    const { data } = client.storage.from('receipt-photos').getPublicUrl(path);
+                    setPhotos([...photos, { url: data.publicUrl }]);
+                } catch (err) {
+                    flash('อัปโหลดรูปไม่สำเร็จ: ' + err.message, 'error');
+                }
+            };
+
+            const removePhoto = (idx) => setPhotos(photos.filter((_, i) => i !== idx));
+
+            const persist = async (status) => {
+                if (!supplierName.trim()) { flash('กรอกชื่อผู้ส่ง/บริษัท'); return; }
+                if (items.length === 0) { flash('เพิ่มรายการสินค้าอย่างน้อย 1 รายการ'); return; }
+                setSaving(true);
+                try {
+                    let rid = receiptId;
+                    const header = { supplier_name: supplierName.trim(), supplier_ref_no: supplierRefNo.trim() || null, receipt_date: receiptDate, notes: notes.trim() || null };
+                    if (rid) {
+                        await client.from('purchase_receipts').update(header).eq('id', rid);
+                        await client.from('purchase_receipt_items').delete().eq('receipt_id', rid);
+                    } else {
+                        const { data, error } = await client.from('purchase_receipts').insert([{ ...header, receipt_no: genReceiptNo(), status: 'draft', created_by: staffName }]).select('id').single();
+                        if (error) throw error;
+                        rid = data.id;
+                    }
+                    await client.from('purchase_receipt_items').insert(items.map(it => ({
+                        receipt_id: rid, product_id: it.productId, location_id: it.locationId,
+                        pack_unit: it.packUnit || null, pack_size: it.packSize, pack_qty: it.packQty,
+                        base_unit: it.baseUnit || null, cost_per_base_unit: it.costPerBaseUnit === '' ? null : parseFloat(it.costPerBaseUnit),
+                        lot_number: it.lotNumber || null, expiry_date: it.expiryDate || null
+                    })));
+                    const newPhotos = photos.filter(ph => !ph.id);
+                    if (newPhotos.length > 0) {
+                        await client.from('purchase_receipt_photos').insert(newPhotos.map(ph => ({ receipt_id: rid, photo_url: ph.url })));
+                    }
+
+                    if (status === 'finalized') {
+                        for (const it of items) {
+                            const totalQty = it.packQty * it.packSize;
+                            const { data: existing } = await client.from('product_location_stock').select('*').eq('product_id', it.productId).eq('location_id', it.locationId).maybeSingle();
+                            if (existing) {
+                                await client.from('product_location_stock').update({ quantity: parseFloat(existing.quantity) + totalQty, updated_at: new Date().toISOString() }).eq('id', existing.id);
+                            } else {
+                                await client.from('product_location_stock').insert([{ product_id: it.productId, location_id: it.locationId, quantity: totalQty }]);
+                            }
+                            await client.from('stock_movements').insert([{ product_id: it.productId, location_id: it.locationId, quantity_change: totalQty, movement_type: 'receiving', notes: 'ใบรับสินค้า ' + (supplierRefNo || ''), staff_name: staffName }]);
+                            if (it.lotNumber || it.expiryDate) {
+                                await client.from('stock_lots').insert([{ product_id: it.productId, location_id: it.locationId, lot_number: it.lotNumber || null, expiry_date: it.expiryDate || null, quantity: totalQty, notes: 'รับเข้าจากใบ ' + (supplierRefNo || '') }]);
+                            }
                         }
-                        runningQty[r.lid] += q;
-                        if (rowIdByLoc[r.lid]) {
-                            await client.from('product_location_stock').update({ quantity: runningQty[r.lid], updated_at: new Date().toISOString() }).eq('id', rowIdByLoc[r.lid]);
-                        } else {
-                            const { data } = await client.from('product_location_stock').insert([{ product_id: pid, location_id: r.lid, quantity: runningQty[r.lid] }]).select('id');
-                            if (data && data[0]) rowIdByLoc[r.lid] = data[0].id;
-                        }
-                        await client.from('stock_movements').insert([{ product_id: pid, location_id: r.lid, quantity_change: q, movement_type: 'receiving', notes, staff_name: staffName }]);
-                        if (r.lot || r.expiry) {
-                            await client.from('stock_lots').insert([{ product_id: pid, location_id: r.lid, lot_number: r.lot || null, expiry_date: r.expiry || null, quantity: q, notes }]);
+                        await client.from('purchase_receipts').update({ status: 'finalized', finalized_at: new Date().toISOString() }).eq('id', rid);
+                        flash('ยืนยันรับเข้าสำเร็จ สต็อกถูกอัปเดตแล้ว', 'success');
+                    } else {
+                        flash('บันทึกร่างสำเร็จ', 'success');
+                    }
+                    onDone();
+                } catch (err) {
+                    flash('Error: ' + err.message, 'error');
+                } finally {
+                    setSaving(false);
+                }
+            };
+
+            if (loading) return <div className="loading">กำลังโหลด...</div>;
+
+            return (
+                <div>
+                    <h2>{receiptId ? 'แก้ไขใบรับสินค้า (ร่าง)' : 'สร้างใบรับสินค้าใหม่'}</h2>
+                    <div className="grid-3">
+                        <div className="form-group">
+                            <label>รับมาจาก/บริษัท *</label>
+                            <input type="text" value={supplierName} onChange={(e) => setSupplierName(e.target.value)} />
+                        </div>
+                        <div className="form-group">
+                            <label>เลขที่ใบส่งของ/ใบแจ้งหนี้ (ถ้ามี)</label>
+                            <input type="text" value={supplierRefNo} onChange={(e) => setSupplierRefNo(e.target.value)} />
+                        </div>
+                        <div className="form-group">
+                            <label>วันที่รับ</label>
+                            <input type="date" value={receiptDate} onChange={(e) => setReceiptDate(e.target.value)} />
+                        </div>
+                    </div>
+                    <div className="form-group">
+                        <label>หมายเหตุ</label>
+                        <input type="text" value={notes} onChange={(e) => setNotes(e.target.value)} />
+                    </div>
+
+                    <h3 style={{marginTop: '10px', marginBottom: '10px'}}>รูปถ่ายใบส่งของ/สินค้า</h3>
+                    <div className="row-actions" style={{marginBottom: '10px', flexWrap: 'wrap'}}>
+                        {photos.map((ph, i) => (
+                            <div key={i} style={{position: 'relative'}}>
+                                <img src={ph.url} style={{width: '70px', height: '70px', objectFit: 'cover', borderRadius: '8px', border: '1px solid var(--border)'}} />
+                                <button className="small danger" style={{position: 'absolute', top: '-8px', right: '-8px', padding: '2px 6px', borderRadius: '999px'}} onClick={() => removePhoto(i)}>×</button>
+                            </div>
+                        ))}
+                    </div>
+                    <div className="row-actions" style={{marginBottom: '20px'}}>
+                        <label className="secondary small" style={{cursor: 'pointer', display: 'inline-block'}}>
+                            📷 ถ่ายรูป
+                            <input type="file" accept="image/*" capture="environment" style={{display: 'none'}} onChange={(e) => { handlePhotoFile(e.target.files[0]); e.target.value = ''; }} />
+                        </label>
+                        <label className="secondary small" style={{cursor: 'pointer', display: 'inline-block'}}>
+                            🖼️ เลือกจากคลัง
+                            <input type="file" accept="image/*" style={{display: 'none'}} onChange={(e) => { handlePhotoFile(e.target.files[0]); e.target.value = ''; }} />
+                        </label>
+                    </div>
+
+                    <h3 style={{marginBottom: '10px'}}>เพิ่มรายการสินค้า</h3>
+                    <div style={{border: '1.5px solid var(--primary)', borderRadius: '10px', padding: '12px', marginBottom: '15px'}}>
+                        <div className="form-group">
+                            <label>ค้นหาสินค้า (ชื่อ/รหัส)</label>
+                            <input type="text" placeholder="พิมพ์ชื่อสินค้าหรือรหัส..." value={pLabel || search} onChange={(e) => { setSearch(e.target.value); setPLabel(''); setPid(''); }} />
+                            {search && !pid && (<div className="search-results">
+                                {filtered.map(p => (<div key={p.id} className="search-result-item" onClick={() => { setPid(p.id); setPLabel(p.product_code + ' - ' + p.name); setSearch(''); }}>{p.product_code} - {p.name} {p.unit ? '(' + p.unit + ')' : ''}</div>))}
+                            </div>)}
+                        </div>
+                        <div className="grid-3">
+                            <div className="form-group">
+                                <label>สถานที่จัดเก็บ</label>
+                                <select value={lid} onChange={(e) => setLid(e.target.value)}>
+                                    <option value="">-- เลือกสถานที่ --</option>
+                                    {locations.map(l => (<option key={l.id} value={l.id}>{l.name}</option>))}
+                                </select>
+                            </div>
+                            <div className="form-group">
+                                <label>หน่วยที่รับจากผู้ผลิต (เช่น ลัง)</label>
+                                <input type="text" value={packUnit} onChange={(e) => setPackUnit(e.target.value)} placeholder={selectedProduct?.unit || 'หน่วย'} />
+                            </div>
+                            <div className="form-group">
+                                <label>จำนวนหน่วยต่อแพ็ค</label>
+                                <input type="number" min="1" value={packSize} onChange={(e) => setPackSize(e.target.value)} />
+                            </div>
+                        </div>
+                        <div className="grid-3">
+                            <div className="form-group">
+                                <label>จำนวนที่รับ ({packUnit || 'หน่วย'})</label>
+                                <input type="number" min="1" value={packQty} onChange={(e) => setPackQty(e.target.value)} />
+                            </div>
+                            <div className="form-group">
+                                <label>LOT (ถ้ามี)</label>
+                                <input type="text" value={lotNumber} onChange={(e) => setLotNumber(e.target.value)} />
+                            </div>
+                            <div className="form-group">
+                                <label>วันหมดอายุ (ถ้ามี)</label>
+                                <input type="date" value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} />
+                            </div>
+                        </div>
+                        {packQty && packSize && parseFloat(packSize) > 1 && (
+                            <div style={{fontSize: '12px', color: 'var(--text-muted)', marginBottom: '10px'}}>
+                                = {(parseFloat(packQty) * parseFloat(packSize)).toFixed(0)} {selectedProduct?.unit || 'หน่วย'} เข้าสต็อก
+                            </div>
+                        )}
+                        <div className="grid-3">
+                            <div className="form-group">
+                                <label>ต้นทุน/หน่วยย่อย (บาท)</label>
+                                <input type="number" value={cost} onChange={(e) => setCost(e.target.value)} />
+                            </div>
+                            <div className="form-group">
+                                <label>ราคาส่ง/หน่วยย่อย (บาท)</label>
+                                <input type="number" value={wholesale} onChange={(e) => setWholesale(e.target.value)} />
+                            </div>
+                            <div className="form-group">
+                                <label>ราคาปลีก/หน่วยย่อย (บาท)</label>
+                                <input type="number" value={retail} onChange={(e) => setRetail(e.target.value)} />
+                            </div>
+                        </div>
+                        <button className="secondary" onClick={addItem}>+ เพิ่มรายการ</button>
+                    </div>
+
+                    <h3 style={{marginBottom: '10px'}}>รายการที่เพิ่มแล้ว ({items.length})</h3>
+                    {items.map((it, i) => (<ReceiptItemRow key={i} item={it} isAdmin={isAdmin} canEditCost={true} onRemove={() => removeItem(i)} />))}
+                    {items.length === 0 && <div style={{color: 'var(--text-muted)', marginBottom: '15px'}}>ยังไม่มีรายการ</div>}
+
+                    <div className="row-actions" style={{marginTop: '20px'}}>
+                        <button className="secondary" onClick={() => persist('draft')} disabled={saving}>บันทึกร่าง</button>
+                        <button onClick={() => persist('finalized')} disabled={saving}>ยืนยันรับเข้า</button>
+                        <button className="secondary" onClick={onCancel} disabled={saving}>ยกเลิก</button>
+                    </div>
+                </div>
+            );
+        }
+
+        function ReceiptDetail({ receiptId, products, locations, isAdmin, flash, onBack, onChanged }) {
+            const [receipt, setReceipt] = useState(null);
+            const [items, setItems] = useState([]);
+            const [photos, setPhotos] = useState([]);
+            const [loading, setLoading] = useState(true);
+            const [editCostMode, setEditCostMode] = useState(false);
+            const [costEdits, setCostEdits] = useState({});
+
+            const load = async () => {
+                setLoading(true);
+                const [{ data: r }, { data: its }, { data: phs }] = await Promise.all([
+                    client.from('purchase_receipts').select('*').eq('id', receiptId).single(),
+                    client.from('purchase_receipt_items').select('*').eq('receipt_id', receiptId),
+                    client.from('purchase_receipt_photos').select('*').eq('receipt_id', receiptId)
+                ]);
+                setReceipt(r);
+                setItems(its || []);
+                setPhotos(phs || []);
+                const edits = {};
+                (its || []).forEach(it => { edits[it.id] = it.cost_per_base_unit ?? ''; });
+                setCostEdits(edits);
+                setLoading(false);
+            };
+            useEffect(() => { load(); }, [receiptId]);
+
+            const saveCostEdits = async () => {
+                try {
+                    for (const it of items) {
+                        const newVal = costEdits[it.id] === '' ? null : parseFloat(costEdits[it.id]);
+                        if (newVal !== it.cost_per_base_unit) {
+                            await client.from('purchase_receipt_items').update({ cost_per_base_unit: newVal }).eq('id', it.id);
                         }
                     }
-                    flash('บันทึกรับเข้าสำเร็จ', 'success');
-                    setPid(''); setPLabel(''); setSearch(''); setNotes(''); setRows([{ lid: '', qty: '', lot: '', expiry: '' }]);
-                    await loadData();
+                    flash('บันทึกต้นทุนสำเร็จ', 'success');
+                    setEditCostMode(false);
+                    await load();
+                    onChanged();
                 } catch (err) {
                     flash('Error: ' + err.message, 'error');
                 }
             };
 
+            if (loading) return <div className="loading">กำลังโหลด...</div>;
+            if (!receipt) return <div>ไม่พบใบรับสินค้า</div>;
+
             return (
                 <div>
-                    <h2>รับเข้าสินค้า</h2>
-                    {msg && <div className={'alert alert-' + msgType}>{msg}</div>}
-                    <div className="form-group">
-                        <label>ค้นหาสินค้า</label>
-                        <input type="text" placeholder="รหัส/ชื่อ" value={pLabel || search} onChange={(e) => { setSearch(e.target.value); setPLabel(''); setPid(''); }} />
-                        {search && !pid && (<div className="search-results">
-                            {filtered.map(p => (<div key={p.id} className="search-result-item" onClick={() => { setPid(p.id); setPLabel(p.product_code + ' - ' + p.name); setSearch(''); }}>{p.product_code} - {p.name} {p.unit ? '(' + p.unit + ')' : ''}</div>))}
-                        </div>)}
-                        {product && <div style={{fontSize: '12px', color: '#666', marginTop: '5px'}}>หน่วย: {product.unit || '-'}</div>}
+                    <h2>ใบรับสินค้า {receipt.receipt_no}</h2>
+                    <div className="card">
+                        <div><strong>ผู้ส่ง/บริษัท:</strong> {receipt.supplier_name}</div>
+                        {receipt.supplier_ref_no && <div><strong>เลขที่ใบส่งของ:</strong> {receipt.supplier_ref_no}</div>}
+                        <div><strong>วันที่รับ:</strong> {receipt.receipt_date}</div>
+                        <div><strong>สถานะ:</strong> <span className={'badge ' + (receipt.status === 'finalized' ? 'badge-in' : 'badge-adj')}>{receipt.status === 'finalized' ? 'ยืนยันแล้ว' : 'ร่าง'}</span></div>
+                        {receipt.notes && <div><strong>หมายเหตุ:</strong> {receipt.notes}</div>}
+                        {receipt.created_by && <div><strong>ผู้บันทึก:</strong> {receipt.created_by}</div>}
                     </div>
-                    {rows.map((r, i) => (
-                        <div key={i} style={{border: '1px solid #eee', borderRadius: '4px', padding: '10px', marginBottom: '10px'}}>
-                            <div className="grid-3" style={{alignItems: 'end'}}>
-                                <div className="form-group">
-                                    <label>ที่อยู่คลัง</label>
-                                    <select value={r.lid} onChange={(e) => setRow(i, { lid: e.target.value })}>
-                                        <option value="">-- เลือก --</option>
-                                        {locations.map(l => (<option key={l.id} value={l.id}>{l.name}</option>))}
-                                    </select>
+                    {photos.length > 0 && (
+                        <div className="row-actions" style={{flexWrap: 'wrap', marginBottom: '15px'}}>
+                            {photos.map(ph => (<img key={ph.id} src={ph.photo_url} style={{width: '90px', height: '90px', objectFit: 'cover', borderRadius: '8px', border: '1px solid var(--border)'}} />))}
+                        </div>
+                    )}
+                    <h3 style={{marginBottom: '10px'}}>รายการสินค้า</h3>
+                    <table>
+                        <thead>
+                            <tr><th>สินค้า</th><th>ที่อยู่</th><th>จำนวน</th>{isAdmin && <th>ต้นทุน/หน่วย</th>}<th>LOT</th><th>หมดอายุ</th></tr>
+                        </thead>
+                        <tbody>
+                            {items.map(it => {
+                                const p = products.find(x => x.id === it.product_id);
+                                const l = locations.find(x => x.id === it.location_id);
+                                const total = parseFloat(it.pack_qty) * parseFloat(it.pack_size);
+                                return (
+                                    <tr key={it.id}>
+                                        <td>{p ? p.product_code + ' - ' + p.name : '-'}</td>
+                                        <td>{l ? l.name : '-'}</td>
+                                        <td>{it.pack_qty} {it.pack_unit || it.base_unit} {it.pack_size > 1 ? '(= ' + total.toFixed(0) + ' ' + (it.base_unit || '') + ')' : ''}</td>
+                                        {isAdmin && (
+                                            <td>
+                                                {editCostMode
+                                                    ? <input type="number" value={costEdits[it.id]} onChange={(e) => setCostEdits({...costEdits, [it.id]: e.target.value})} style={{width: '90px'}} />
+                                                    : (it.cost_per_base_unit ?? '-')}
+                                            </td>
+                                        )}
+                                        <td>{it.lot_number || '-'}</td>
+                                        <td>{it.expiry_date || '-'}</td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                    <div className="row-actions" style={{marginTop: '15px'}}>
+                        <button className="secondary" onClick={onBack}>กลับ</button>
+                        {isAdmin && !editCostMode && <button className="secondary" onClick={() => setEditCostMode(true)}>แก้ไขต้นทุน</button>}
+                        {isAdmin && editCostMode && <button onClick={saveCostEdits}>บันทึกต้นทุน</button>}
+                        {isAdmin && editCostMode && <button className="secondary" onClick={() => setEditCostMode(false)}>ยกเลิก</button>}
+                    </div>
+                </div>
+            );
+        }
+
+        function Receiving({ products, locations, loadData, msg, msgType, flash, staffName, isAdmin }) {
+            const [receipts, setReceipts] = useState([]);
+            const [loadingList, setLoadingList] = useState(true);
+            const [view, setView] = useState('list');
+            const [activeId, setActiveId] = useState(null);
+            const [filterStatus, setFilterStatus] = useState('');
+
+            const loadReceipts = async () => {
+                setLoadingList(true);
+                const { data } = await client.from('purchase_receipts').select('*').order('created_at', { ascending: false }).limit(200);
+                setReceipts(data || []);
+                setLoadingList(false);
+            };
+            useEffect(() => { loadReceipts(); }, []);
+
+            const backToList = async () => { setView('list'); setActiveId(null); await loadReceipts(); await loadData(); };
+            const openReceipt = (r) => { setActiveId(r.id); setView(r.status === 'draft' ? 'form' : 'detail'); };
+
+            const filtered = filterStatus ? receipts.filter(r => r.status === filterStatus) : receipts;
+
+            if (view === 'form') {
+                return <ReceiptForm receiptId={activeId} products={products} locations={locations} staffName={staffName} isAdmin={isAdmin} flash={flash} onDone={backToList} onCancel={backToList} />;
+            }
+            if (view === 'detail') {
+                return <ReceiptDetail receiptId={activeId} products={products} locations={locations} isAdmin={isAdmin} flash={flash} onBack={backToList} onChanged={loadData} />;
+            }
+
+            return (
+                <div>
+                    <h2>รับเข้าสินค้า (ใบรับสินค้า)</h2>
+                    {msg && <div className={'alert alert-' + msgType}>{msg}</div>}
+                    <div className="row-actions" style={{marginBottom: '15px'}}>
+                        <button onClick={() => { setActiveId(null); setView('form'); }}>+ สร้างใบรับสินค้าใหม่</button>
+                        <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} style={{maxWidth: '180px'}}>
+                            <option value="">ทั้งหมด</option>
+                            <option value="draft">ร่าง</option>
+                            <option value="finalized">ยืนยันแล้ว</option>
+                        </select>
+                    </div>
+                    {loadingList && <div className="loading">กำลังโหลด...</div>}
+                    {!loadingList && filtered.map(r => (
+                        <div key={r.id} className="card" style={{cursor: 'pointer'}} onClick={() => openReceipt(r)}>
+                            <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+                                <div>
+                                    <strong>{r.receipt_no}</strong> · {r.supplier_name}
+                                    <div style={{fontSize: '12px', color: 'var(--text-muted)', marginTop: '3px'}}>{r.receipt_date} {r.supplier_ref_no ? '· อ้างอิง ' + r.supplier_ref_no : ''}</div>
                                 </div>
-                                <div className="form-group">
-                                    <label>จำนวน{product?.unit ? ' (' + product.unit + ')' : ''}</label>
-                                    <input type="number" min="1" value={r.qty} onChange={(e) => setRow(i, { qty: e.target.value })} />
-                                </div>
-                                <div className="form-group">
-                                    {rows.length > 1 && <button className="secondary" onClick={() => removeRow(i)}>ลบแถว</button>}
-                                </div>
-                            </div>
-                            <div className="grid-2">
-                                <div className="form-group">
-                                    <label>LOT (ถ้ามี)</label>
-                                    <input type="text" value={r.lot} onChange={(e) => setRow(i, { lot: e.target.value })} />
-                                </div>
-                                <div className="form-group">
-                                    <label>วันหมดอายุ (ถ้ามี)</label>
-                                    <input type="date" value={r.expiry} onChange={(e) => setRow(i, { expiry: e.target.value })} />
-                                </div>
+                                <span className={'badge ' + (r.status === 'finalized' ? 'badge-in' : 'badge-adj')}>{r.status === 'finalized' ? 'ยืนยันแล้ว' : 'ร่าง'}</span>
                             </div>
                         </div>
                     ))}
-                    <button className="secondary small" onClick={addRow} style={{marginBottom: '15px'}}>+ เพิ่มที่อยู่</button>
-                    <div className="form-group">
-                        <label>หมายเหตุ</label>
-                        <input type="text" value={notes} onChange={(e) => setNotes(e.target.value)} />
-                    </div>
-                    <button onClick={handle}>บันทึกรับเข้า</button>
+                    {!loadingList && filtered.length === 0 && <div style={{color: 'var(--text-muted)', textAlign: 'center', padding: '20px'}}>ยังไม่มีใบรับสินค้า</div>}
                 </div>
             );
         }
