@@ -162,6 +162,13 @@
         .search-result-item { padding: 9px 12px; border-bottom: 1px solid var(--border); cursor: pointer; font-size: 13.5px; }
         .search-result-item:last-child { border-bottom: none; }
         .search-result-item:hover { background: var(--primary-light); }
+        @media print {
+            @page { size: A4; margin: 15mm; }
+            body * { visibility: hidden; }
+            .print-area, .print-area * { visibility: visible; }
+            .print-area { position: absolute; left: 0; top: 0; width: 100%; }
+            .no-print { display: none !important; }
+        }
     </style>
 </head>
 <body>
@@ -239,18 +246,42 @@
             return 'PR' + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + pad(d.getHours()) + pad(d.getMinutes()) + pad(d.getSeconds()) + Math.floor(Math.random() * 90 + 10);
         };
 
-        function ReceiptItemRow({ item, isAdmin, canEditCost, onRemove }) {
+        function ReceiptItemRow({ item, isAdmin, canEditCost, onRemove, locations, onUpdate }) {
             const totalBase = (parseFloat(item.packQty) || 0) * (parseFloat(item.packSize) || 1);
+            const needsLocation = onUpdate && !item.locationId;
             return (
-                <div style={{border: '1px solid var(--border)', borderRadius: '10px', padding: '10px', marginBottom: '10px'}}>
+                <div style={{border: needsLocation ? '1.5px solid #e0a800' : '1px solid var(--border)', borderRadius: '10px', padding: '10px', marginBottom: '10px'}}>
                     <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'start'}}>
-                        <div>
+                        <div style={{flex: 1}}>
                             <strong>{item.productLabel}</strong>
-                            <div style={{fontSize: '12px', color: 'var(--text-muted)', marginTop: '3px'}}>
-                                📍 {item.locationLabel} · {item.packQty || 0} {item.packUnit || item.baseUnit || 'หน่วย'} {item.packSize > 1 ? '× ' + item.packSize + ' = ' + totalBase.toFixed(0) + ' ' + (item.baseUnit || '') : ''}
-                            </div>
-                            {item.lotNumber && <div style={{fontSize: '12px', color: 'var(--text-muted)'}}>LOT: {item.lotNumber}{item.expiryDate ? ' · หมดอายุ ' + item.expiryDate : ''}</div>}
-                            {(isAdmin || canEditCost) && item.costPerBaseUnit !== '' && <div style={{fontSize: '12px', color: 'var(--text-muted)'}}>ต้นทุน/หน่วย: {item.costPerBaseUnit} บาท</div>}
+                            {onUpdate ? (
+                                <div className="grid-3" style={{marginTop: '8px'}}>
+                                    <div className="form-group" style={{marginBottom: 0}}>
+                                        <label>สถานที่จัดเก็บ{needsLocation ? ' (ยังไม่เลือก)' : ''}</label>
+                                        <select value={item.locationId || ''} onChange={(e) => onUpdate({ locationId: e.target.value, locationLabel: (locations.find(l => l.id === e.target.value) || {}).name || '' })}>
+                                            <option value="">-- เลือกสถานที่ --</option>
+                                            {locations.map(l => (<option key={l.id} value={l.id}>{l.name}</option>))}
+                                        </select>
+                                    </div>
+                                    <div className="form-group" style={{marginBottom: 0}}>
+                                        <label>จำนวนที่รับจริง ({item.packUnit || item.baseUnit || 'หน่วย'})</label>
+                                        <input type="number" value={item.packQty} onChange={(e) => onUpdate({ packQty: e.target.value })} />
+                                    </div>
+                                    {(isAdmin || canEditCost) && (
+                                        <div className="form-group" style={{marginBottom: 0}}>
+                                            <label>ต้นทุน/หน่วย (บาท)</label>
+                                            <input type="number" value={item.costPerBaseUnit} onChange={(e) => onUpdate({ costPerBaseUnit: e.target.value })} />
+                                        </div>
+                                    )}
+                                </div>
+                            ) : (
+                                <div style={{fontSize: '12px', color: 'var(--text-muted)', marginTop: '3px'}}>
+                                    📍 {item.locationLabel} · {item.packQty || 0} {item.packUnit || item.baseUnit || 'หน่วย'} {item.packSize > 1 ? '× ' + item.packSize + ' = ' + totalBase.toFixed(0) + ' ' + (item.baseUnit || '') : ''}
+                                </div>
+                            )}
+                            {item.packSize > 1 && <div style={{fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px'}}>= {totalBase.toFixed(0)} {item.baseUnit || ''} เข้าสต็อก ({item.packQty || 0} {item.packUnit} × {item.packSize})</div>}
+                            {item.lotNumber && <div style={{fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px'}}>LOT: {item.lotNumber}{item.expiryDate ? ' · หมดอายุ ' + item.expiryDate : ''}</div>}
+                            {!onUpdate && (isAdmin || canEditCost) && item.costPerBaseUnit !== '' && <div style={{fontSize: '12px', color: 'var(--text-muted)'}}>ต้นทุน/หน่วย: {item.costPerBaseUnit} บาท</div>}
                         </div>
                         {onRemove && <button className="small danger" onClick={onRemove}>ลบ</button>}
                     </div>
@@ -258,13 +289,13 @@
             );
         }
 
-        function ReceiptForm({ receiptId, products, locations, staffName, isAdmin, flash, onDone, onCancel }) {
+        function ReceiptForm({ receiptId, products, locations, staffName, isAdmin, flash, onDone, onCancel, seed }) {
             const [loading, setLoading] = useState(!!receiptId);
-            const [supplierName, setSupplierName] = useState('');
-            const [supplierRefNo, setSupplierRefNo] = useState('');
+            const [supplierName, setSupplierName] = useState(seed?.supplierName || '');
+            const [supplierRefNo, setSupplierRefNo] = useState(seed?.supplierRefNo || '');
             const [receiptDate, setReceiptDate] = useState(new Date().toISOString().slice(0, 10));
-            const [notes, setNotes] = useState('');
-            const [items, setItems] = useState([]);
+            const [notes, setNotes] = useState(seed?.notes || '');
+            const [items, setItems] = useState(seed?.items || []);
             const [photos, setPhotos] = useState([]);
             const [saving, setSaving] = useState(false);
 
@@ -327,6 +358,7 @@
             };
 
             const removeItem = (idx) => setItems(items.filter((_, i) => i !== idx));
+            const updateItem = (idx, patch) => setItems(items.map((it, i) => i === idx ? { ...it, ...patch } : it));
 
             const handlePhotoFile = async (file) => {
                 if (!file) return;
@@ -347,6 +379,7 @@
             const persist = async (status) => {
                 if (!supplierName.trim()) { flash('กรอกชื่อผู้ส่ง/บริษัท'); return; }
                 if (items.length === 0) { flash('เพิ่มรายการสินค้าอย่างน้อย 1 รายการ'); return; }
+                if (items.some(it => !it.locationId)) { flash('กรุณาเลือกสถานที่จัดเก็บให้ครบทุกรายการก่อนบันทึก'); return; }
                 setSaving(true);
                 try {
                     let rid = receiptId;
@@ -504,7 +537,7 @@
                     </div>
 
                     <h3 style={{marginBottom: '10px'}}>รายการที่เพิ่มแล้ว ({items.length})</h3>
-                    {items.map((it, i) => (<ReceiptItemRow key={i} item={it} isAdmin={isAdmin} canEditCost={true} onRemove={() => removeItem(i)} />))}
+                    {items.map((it, i) => (<ReceiptItemRow key={i} item={it} isAdmin={isAdmin} canEditCost={true} onRemove={() => removeItem(i)} locations={locations} onUpdate={(patch) => updateItem(i, patch)} />))}
                     {items.length === 0 && <div style={{color: 'var(--text-muted)', marginBottom: '15px'}}>ยังไม่มีรายการ</div>}
 
                     <div className="row-actions" style={{marginTop: '20px'}}>
@@ -563,51 +596,54 @@
 
             return (
                 <div>
-                    <h2>ใบรับสินค้า {receipt.receipt_no}</h2>
-                    <div className="card">
-                        <div><strong>ผู้ส่ง/บริษัท:</strong> {receipt.supplier_name}</div>
-                        {receipt.supplier_ref_no && <div><strong>เลขที่ใบส่งของ:</strong> {receipt.supplier_ref_no}</div>}
-                        <div><strong>วันที่รับ:</strong> {receipt.receipt_date}</div>
-                        <div><strong>สถานะ:</strong> <span className={'badge ' + (receipt.status === 'finalized' ? 'badge-in' : 'badge-adj')}>{receipt.status === 'finalized' ? 'ยืนยันแล้ว' : 'ร่าง'}</span></div>
-                        {receipt.notes && <div><strong>หมายเหตุ:</strong> {receipt.notes}</div>}
-                        {receipt.created_by && <div><strong>ผู้บันทึก:</strong> {receipt.created_by}</div>}
-                    </div>
-                    {photos.length > 0 && (
-                        <div className="row-actions" style={{flexWrap: 'wrap', marginBottom: '15px'}}>
-                            {photos.map(ph => (<img key={ph.id} src={ph.photo_url} style={{width: '90px', height: '90px', objectFit: 'cover', borderRadius: '8px', border: '1px solid var(--border)'}} />))}
+                    <div className="print-area">
+                        <h2>ใบรับสินค้า {receipt.receipt_no}</h2>
+                        <div className="card">
+                            <div><strong>ผู้ส่ง/บริษัท:</strong> {receipt.supplier_name}</div>
+                            {receipt.supplier_ref_no && <div><strong>เลขที่ใบส่งของ:</strong> {receipt.supplier_ref_no}</div>}
+                            <div><strong>วันที่รับ:</strong> {receipt.receipt_date}</div>
+                            <div><strong>สถานะ:</strong> <span className={'badge ' + (receipt.status === 'finalized' ? 'badge-in' : 'badge-adj')}>{receipt.status === 'finalized' ? 'ยืนยันแล้ว' : 'ร่าง'}</span></div>
+                            {receipt.notes && <div><strong>หมายเหตุ:</strong> {receipt.notes}</div>}
+                            {receipt.created_by && <div><strong>ผู้บันทึก:</strong> {receipt.created_by}</div>}
                         </div>
-                    )}
-                    <h3 style={{marginBottom: '10px'}}>รายการสินค้า</h3>
-                    <table>
-                        <thead>
-                            <tr><th>สินค้า</th><th>ที่อยู่</th><th>จำนวน</th>{isAdmin && <th>ต้นทุน/หน่วย</th>}<th>LOT</th><th>หมดอายุ</th></tr>
-                        </thead>
-                        <tbody>
-                            {items.map(it => {
-                                const p = products.find(x => x.id === it.product_id);
-                                const l = locations.find(x => x.id === it.location_id);
-                                const total = parseFloat(it.pack_qty) * parseFloat(it.pack_size);
-                                return (
-                                    <tr key={it.id}>
-                                        <td>{p ? p.product_code + ' - ' + p.name : '-'}</td>
-                                        <td>{l ? l.name : '-'}</td>
-                                        <td>{it.pack_qty} {it.pack_unit || it.base_unit} {it.pack_size > 1 ? '(= ' + total.toFixed(0) + ' ' + (it.base_unit || '') + ')' : ''}</td>
-                                        {isAdmin && (
-                                            <td>
-                                                {editCostMode
-                                                    ? <input type="number" value={costEdits[it.id]} onChange={(e) => setCostEdits({...costEdits, [it.id]: e.target.value})} style={{width: '90px'}} />
-                                                    : (it.cost_per_base_unit ?? '-')}
-                                            </td>
-                                        )}
-                                        <td>{it.lot_number || '-'}</td>
-                                        <td>{it.expiry_date || '-'}</td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
-                    <div className="row-actions" style={{marginTop: '15px'}}>
+                        {photos.length > 0 && (
+                            <div className="row-actions no-print" style={{flexWrap: 'wrap', marginBottom: '15px'}}>
+                                {photos.map(ph => (<img key={ph.id} src={ph.photo_url} style={{width: '90px', height: '90px', objectFit: 'cover', borderRadius: '8px', border: '1px solid var(--border)'}} />))}
+                            </div>
+                        )}
+                        <h3 style={{marginBottom: '10px'}}>รายการสินค้า</h3>
+                        <table>
+                            <thead>
+                                <tr><th>สินค้า</th><th>ที่อยู่</th><th>จำนวน</th>{isAdmin && <th>ต้นทุน/หน่วย</th>}<th>LOT</th><th>หมดอายุ</th></tr>
+                            </thead>
+                            <tbody>
+                                {items.map(it => {
+                                    const p = products.find(x => x.id === it.product_id);
+                                    const l = locations.find(x => x.id === it.location_id);
+                                    const total = parseFloat(it.pack_qty) * parseFloat(it.pack_size);
+                                    return (
+                                        <tr key={it.id}>
+                                            <td>{p ? p.product_code + ' - ' + p.name : '-'}</td>
+                                            <td>{l ? l.name : '-'}</td>
+                                            <td>{it.pack_qty} {it.pack_unit || it.base_unit} {it.pack_size > 1 ? '(= ' + total.toFixed(0) + ' ' + (it.base_unit || '') + ')' : ''}</td>
+                                            {isAdmin && (
+                                                <td>
+                                                    {editCostMode
+                                                        ? <input type="number" value={costEdits[it.id]} onChange={(e) => setCostEdits({...costEdits, [it.id]: e.target.value})} style={{width: '90px'}} />
+                                                        : (it.cost_per_base_unit ?? '-')}
+                                                </td>
+                                            )}
+                                            <td>{it.lot_number || '-'}</td>
+                                            <td>{it.expiry_date || '-'}</td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                    <div className="row-actions no-print" style={{marginTop: '15px'}}>
                         <button className="secondary" onClick={onBack}>กลับ</button>
+                        <button className="secondary" onClick={() => window.print()}>🖨️ พิมพ์ (A4)</button>
                         {isAdmin && !editCostMode && <button className="secondary" onClick={() => setEditCostMode(true)}>แก้ไขต้นทุน</button>}
                         {isAdmin && editCostMode && <button onClick={saveCostEdits}>บันทึกต้นทุน</button>}
                         {isAdmin && editCostMode && <button className="secondary" onClick={() => setEditCostMode(false)}>ยกเลิก</button>}
@@ -616,10 +652,10 @@
             );
         }
 
-        function Receiving({ products, locations, loadData, msg, msgType, flash, staffName, isAdmin }) {
+        function Receiving({ products, locations, loadData, msg, msgType, flash, staffName, isAdmin, receiveSeed, clearReceiveSeed }) {
             const [receipts, setReceipts] = useState([]);
             const [loadingList, setLoadingList] = useState(true);
-            const [view, setView] = useState('list');
+            const [view, setView] = useState(receiveSeed ? 'form' : 'list');
             const [activeId, setActiveId] = useState(null);
             const [filterStatus, setFilterStatus] = useState('');
 
@@ -631,13 +667,13 @@
             };
             useEffect(() => { loadReceipts(); }, []);
 
-            const backToList = async () => { setView('list'); setActiveId(null); await loadReceipts(); await loadData(); };
+            const backToList = async () => { setView('list'); setActiveId(null); if (receiveSeed) clearReceiveSeed(); await loadReceipts(); await loadData(); };
             const openReceipt = (r) => { setActiveId(r.id); setView(r.status === 'draft' ? 'form' : 'detail'); };
 
             const filtered = filterStatus ? receipts.filter(r => r.status === filterStatus) : receipts;
 
             if (view === 'form') {
-                return <ReceiptForm receiptId={activeId} products={products} locations={locations} staffName={staffName} isAdmin={isAdmin} flash={flash} onDone={backToList} onCancel={backToList} />;
+                return <ReceiptForm receiptId={activeId} products={products} locations={locations} staffName={staffName} isAdmin={isAdmin} flash={flash} onDone={backToList} onCancel={backToList} seed={activeId ? null : receiveSeed} />;
             }
             if (view === 'detail') {
                 return <ReceiptDetail receiptId={activeId} products={products} locations={locations} isAdmin={isAdmin} flash={flash} onBack={backToList} onChanged={loadData} />;
@@ -924,7 +960,7 @@
             );
         }
 
-        function PoDetail({ poId, products, onBack }) {
+        function PoDetail({ poId, products, onBack, onReceiveFromPo }) {
             const [po, setPo] = useState(null);
             const [items, setItems] = useState([]);
             const [loading, setLoading] = useState(true);
@@ -946,40 +982,64 @@
 
             const total = items.reduce((sum, it) => sum + (parseFloat(it.quantity) || 0) * (parseFloat(it.unit_cost) || 0), 0);
 
+            const receiveFromThis = () => {
+                onReceiveFromPo({
+                    supplierName: po.supplier_name,
+                    supplierRefNo: po.po_no,
+                    notes: 'รับเข้าตามใบสั่งซื้อ ' + po.po_no,
+                    items: items.map(it => {
+                        const p = products.find(x => x.id === it.product_id);
+                        return {
+                            productId: it.product_id, productLabel: p ? p.product_code + ' - ' + p.name : '-',
+                            locationId: '', locationLabel: '',
+                            packUnit: it.unit || '', packSize: 1, packQty: it.quantity,
+                            baseUnit: p?.unit || it.unit || '', costPerBaseUnit: it.unit_cost ?? '',
+                            lotNumber: '', expiryDate: ''
+                        };
+                    })
+                });
+            };
+
             return (
                 <div>
-                    <h2>ใบสั่งซื้อ {po.po_no}</h2>
-                    <div className="card">
-                        <div><strong>ผู้ขาย/ซัพพลายเออร์:</strong> {po.supplier_name}</div>
-                        <div><strong>วันที่สั่งซื้อ:</strong> {po.order_date}</div>
-                        <div><strong>สถานะ:</strong> <span className="badge badge-in">ยืนยันแล้ว</span></div>
-                        {po.notes && <div><strong>หมายเหตุ:</strong> {po.notes}</div>}
-                        {po.created_by && <div><strong>ผู้บันทึก:</strong> {po.created_by}</div>}
+                    <div className="print-area">
+                        <h2>ใบสั่งซื้อ {po.po_no}</h2>
+                        <div className="card">
+                            <div><strong>ผู้ขาย/ซัพพลายเออร์:</strong> {po.supplier_name}</div>
+                            <div><strong>วันที่สั่งซื้อ:</strong> {po.order_date}</div>
+                            <div><strong>สถานะ:</strong> <span className="badge badge-in">ยืนยันแล้ว</span></div>
+                            {po.notes && <div><strong>หมายเหตุ:</strong> {po.notes}</div>}
+                            {po.created_by && <div><strong>ผู้บันทึก:</strong> {po.created_by}</div>}
+                        </div>
+                        <h3 style={{marginBottom: '10px'}}>รายการสินค้า</h3>
+                        <table>
+                            <thead><tr><th>สินค้า</th><th>จำนวน</th><th>ต้นทุน/หน่วย</th><th>รวม</th></tr></thead>
+                            <tbody>
+                                {items.map(it => {
+                                    const p = products.find(x => x.id === it.product_id);
+                                    return (
+                                        <tr key={it.id}>
+                                            <td>{p ? p.product_code + ' - ' + p.name : '-'}</td>
+                                            <td>{it.quantity} {it.unit || ''}</td>
+                                            <td>{it.unit_cost ?? '-'}</td>
+                                            <td>{((parseFloat(it.quantity) || 0) * (parseFloat(it.unit_cost) || 0)).toFixed(2)}</td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                        <div style={{textAlign: 'right', fontWeight: 600, margin: '10px 0'}}>รวมทั้งสิ้น: {total.toFixed(2)} บาท</div>
                     </div>
-                    <h3 style={{marginBottom: '10px'}}>รายการสินค้า</h3>
-                    <table>
-                        <thead><tr><th>สินค้า</th><th>จำนวน</th><th>ต้นทุน/หน่วย</th><th>รวม</th></tr></thead>
-                        <tbody>
-                            {items.map(it => {
-                                const p = products.find(x => x.id === it.product_id);
-                                return (
-                                    <tr key={it.id}>
-                                        <td>{p ? p.product_code + ' - ' + p.name : '-'}</td>
-                                        <td>{it.quantity} {it.unit || ''}</td>
-                                        <td>{it.unit_cost ?? '-'}</td>
-                                        <td>{((parseFloat(it.quantity) || 0) * (parseFloat(it.unit_cost) || 0)).toFixed(2)}</td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
-                    <div style={{textAlign: 'right', fontWeight: 600, margin: '10px 0'}}>รวมทั้งสิ้น: {total.toFixed(2)} บาท</div>
-                    <button className="secondary" onClick={onBack}>กลับ</button>
+                    <div className="row-actions no-print">
+                        <button className="secondary" onClick={onBack}>กลับ</button>
+                        <button className="secondary" onClick={() => window.print()}>🖨️ พิมพ์ (A4)</button>
+                        <button onClick={receiveFromThis}>📥 รับเข้าจากใบนี้</button>
+                    </div>
                 </div>
             );
         }
 
-        function PurchaseOrders({ products, loadData, msg, msgType, flash, staffName }) {
+        function PurchaseOrders({ products, loadData, msg, msgType, flash, staffName, goReceiveFromPo }) {
             const [pos, setPos] = useState([]);
             const [loadingList, setLoadingList] = useState(true);
             const [view, setView] = useState('list');
@@ -1003,7 +1063,7 @@
                 return <PoForm poId={activeId} products={products} staffName={staffName} flash={flash} onDone={backToList} onCancel={backToList} />;
             }
             if (view === 'detail') {
-                return <PoDetail poId={activeId} products={products} onBack={backToList} />;
+                return <PoDetail poId={activeId} products={products} onBack={backToList} onReceiveFromPo={goReceiveFromPo} />;
             }
 
             return (
@@ -1770,8 +1830,15 @@
             const [loading, setLoading] = useState(true);
             const [msg, setMsg] = useState('');
             const [msgType, setMsgType] = useState('error');
+            const [receiveSeed, setReceiveSeed] = useState(null);
 
             useEffect(() => { loadData(); }, []);
+
+            const goReceiveFromPo = (seed) => {
+                setReceiveSeed(seed);
+                setTab('receiving');
+                setMsg('');
+            };
 
             const flash = (text, type) => {
                 setMsg(text);
@@ -1818,7 +1885,7 @@
                 setCurrentStaff(null);
             };
 
-            const shared = { products, locations, stock, movements, lots, staff, loadData, msg, msgType, flash, staffName: currentStaff.name, isAdmin: currentStaff.is_admin };
+            const shared = { products, locations, stock, movements, lots, staff, loadData, msg, msgType, flash, staffName: currentStaff.name, isAdmin: currentStaff.is_admin, receiveSeed, clearReceiveSeed: () => setReceiveSeed(null), goReceiveFromPo };
             const soonCount = lots.filter(l => l.expiry_date && daysUntil(l.expiry_date) <= 30).length;
 
             return (
