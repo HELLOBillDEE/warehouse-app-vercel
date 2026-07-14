@@ -1193,6 +1193,7 @@
             const [editVals, setEditVals] = useState({});
             const [showAdd, setShowAdd] = useState(false);
             const [newProd, setNewProd] = useState({ code: '', name: '', unit: '', price: '', cost: '', wholesalePrice: '', category: '', company: '', packUnit: '', packSize: '', activeIngredient: '', usageInfo: '', restrictions: '' });
+            const companyOptions = [...new Set(products.map(p => p.company).filter(Boolean))].sort();
             const matchesSearch = (p) =>
                 p.product_code?.includes(search.toUpperCase()) ||
                 p.name?.includes(search) ||
@@ -1347,7 +1348,7 @@
                             </div>
                             <div className="form-group">
                                 <label>บริษัท/แบรนด์ (ถ้ามี)</label>
-                                <input type="text" value={newProd.company} onChange={(e) => setNewProd({...newProd, company: e.target.value})} />
+                                <UnitInput value={newProd.company} onChange={(v) => setNewProd({...newProd, company: v})} options={companyOptions} placeholder="-- เลือกบริษัท/แบรนด์ --" />
                             </div>
                             <div className="grid-2">
                                 <div className="form-group">
@@ -1491,7 +1492,7 @@
                                                             </div>
                                                             <div className="form-group">
                                                                 <label>บริษัท/แบรนด์</label>
-                                                                <input type="text" value={editVals.company} onChange={(e) => setEditVals({...editVals, company: e.target.value})} />
+                                                                <UnitInput value={editVals.company} onChange={(v) => setEditVals({...editVals, company: v})} options={companyOptions} placeholder="-- เลือกบริษัท/แบรนด์ --" />
                                                             </div>
                                                         </div>
                                                         <div className="form-group">
