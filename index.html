@@ -1187,6 +1187,7 @@
         function Warehouse({ products, locations, stock, loadData, msg, msgType, flash, staffName, isAdmin }) {
             const [search, setSearch] = useState('');
             const [locFilter, setLocFilter] = useState('');
+            const [expandedInfo, setExpandedInfo] = useState({});
             const [editId, setEditId] = useState(null);
             const [editVals, setEditVals] = useState({});
             const [showAdd, setShowAdd] = useState(false);
@@ -1410,8 +1411,22 @@
                                                 <td>
                                                     <strong>{p.product_code}</strong><br />{p.name}
                                                     {p.pack_unit && p.pack_size ? <div style={{fontSize: '11px', color: 'var(--text-muted)'}}>หน่วยบรรจุ: {formatUnit(p)}</div> : null}
-                                                    {p.active_ingredient ? <div style={{fontSize: '11px', color: 'var(--text-muted)'}}>สาร: {p.active_ingredient}</div> : null}
-                                                    {p.usage_info ? <div style={{fontSize: '11px', color: 'var(--text-muted)'}}>สรรพคุณ: {p.usage_info}</div> : null}
+                                                    {p.active_ingredient ? (
+                                                        <span className="badge" style={{background: '#e1f0ff', color: '#0b5394', marginTop: '4px', display: 'inline-block'}} title={'สารเดียวกัน (ใช้แทนกันได้): ' + p.active_ingredient}>
+                                                            🧪 {p.active_ingredient}
+                                                        </span>
+                                                    ) : null}
+                                                    {p.usage_info ? (
+                                                        expandedInfo[p.id] ? (
+                                                            <div style={{fontSize: '11px', color: 'var(--text-muted)', whiteSpace: 'pre-line', cursor: 'pointer', marginTop: '4px'}} onClick={() => setExpandedInfo({...expandedInfo, [p.id]: false})}>
+                                                                สรรพคุณ: {p.usage_info}
+                                                            </div>
+                                                        ) : (
+                                                            <div style={{fontSize: '11px', color: 'var(--primary)', cursor: 'pointer', marginTop: '4px'}} title={p.usage_info} onClick={() => setExpandedInfo({...expandedInfo, [p.id]: true})}>
+                                                                ℹ️ ดูสรรพคุณ (ชี้เมาส์ดูตัวอย่าง)
+                                                            </div>
+                                                        )
+                                                    ) : null}
                                                 </td>
                                                 <td>{p.company || '-'}</td>
                                                 <td>{p.category ? <span className="badge badge-adj">{p.category}</span> : '-'}</td>
