@@ -1416,13 +1416,19 @@
                                                             🧪 {p.active_ingredient}
                                                         </span>
                                                     ) : null}
-                                                    {p.usage_info ? (
+                                                    {p.restrictions ? (
+                                                        <span className="badge" style={{background: '#fdecea', color: '#c0392b', marginTop: '4px', marginLeft: '4px', display: 'inline-block'}} title={'ข้อจำกัดการใช้: ' + p.restrictions}>
+                                                            ⚠️ มีข้อจำกัดการใช้
+                                                        </span>
+                                                    ) : null}
+                                                    {(p.usage_info || p.restrictions) ? (
                                                         expandedInfo[p.id] ? (
                                                             <div style={{fontSize: '11px', color: 'var(--text-muted)', whiteSpace: 'pre-line', cursor: 'pointer', marginTop: '4px'}} onClick={() => setExpandedInfo({...expandedInfo, [p.id]: false})}>
-                                                                สรรพคุณ: {p.usage_info}
+                                                                {p.usage_info ? <div>สรรพคุณ: {p.usage_info}</div> : null}
+                                                                {p.restrictions ? <div style={{color: '#c0392b'}}>⚠️ ข้อจำกัดการใช้: {p.restrictions}</div> : null}
                                                             </div>
                                                         ) : (
-                                                            <div style={{fontSize: '11px', color: 'var(--primary)', cursor: 'pointer', marginTop: '4px'}} title={p.usage_info} onClick={() => setExpandedInfo({...expandedInfo, [p.id]: true})}>
+                                                            <div style={{fontSize: '11px', color: 'var(--primary)', cursor: 'pointer', marginTop: '4px'}} title={[p.usage_info, p.restrictions].filter(Boolean).join('\n\n')} onClick={() => setExpandedInfo({...expandedInfo, [p.id]: true})}>
                                                                 ℹ️ ดูเพิ่มเติม
                                                             </div>
                                                         )
