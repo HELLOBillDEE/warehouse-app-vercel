@@ -1188,7 +1188,7 @@
             const [editId, setEditId] = useState(null);
             const [editVals, setEditVals] = useState({});
             const [showAdd, setShowAdd] = useState(false);
-            const [newProd, setNewProd] = useState({ code: '', name: '', unit: '', price: '', cost: '', wholesalePrice: '', category: '' });
+            const [newProd, setNewProd] = useState({ code: '', name: '', unit: '', price: '', cost: '', wholesalePrice: '', category: '', packUnit: '', packSize: '' });
             const filtered = products.filter(p => p.product_code?.includes(search.toUpperCase()) || p.name?.includes(search)).slice(0, 50);
 
             const addProduct = async () => {
@@ -1202,7 +1202,9 @@
                         name: newProd.name.trim(),
                         unit: newProd.unit.trim() || null,
                         price: newProd.price === '' ? null : parseFloat(newProd.price),
-                        category: newProd.category.trim() || null
+                        category: newProd.category.trim() || null,
+                        pack_unit: newProd.packUnit.trim() || null,
+                        pack_size: newProd.packSize === '' ? null : parseFloat(newProd.packSize)
                     };
                     if (isAdmin) {
                         payload.cost = newProd.cost === '' ? null : parseFloat(newProd.cost);
@@ -1210,7 +1212,7 @@
                     }
                     await client.from('products').insert([payload]);
                     flash('เพิ่มสินค้าใหม่สำเร็จ', 'success');
-                    setNewProd({ code: '', name: '', unit: '', price: '', cost: '', wholesalePrice: '', category: '' });
+                    setNewProd({ code: '', name: '', unit: '', price: '', cost: '', wholesalePrice: '', category: '', packUnit: '', packSize: '' });
                     setShowAdd(false);
                     await loadData();
                 } catch (err) {
@@ -1230,14 +1232,17 @@
                     expiryByLoc[l.id] = '';
                 });
                 setEditId(p.id);
-                setEditVals({ name: p.name, unit: p.unit || '', price: p.price || '', cost: p.cost || '', wholesalePrice: p.wholesale_price || '', qtyByLoc, lotByLoc, expiryByLoc });
+                setEditVals({ name: p.name, unit: p.unit || '', price: p.price || '', cost: p.cost || '', wholesalePrice: p.wholesale_price || '', packUnit: p.pack_unit || '', packSize: p.pack_size || '', qtyByLoc, lotByLoc, expiryByLoc });
             };
 
             const cancelEdit = () => { setEditId(null); setEditVals({}); };
 
             const saveEdit = async (p) => {
                 try {
-                    const payload = { name: editVals.name, unit: editVals.unit, price: editVals.price === '' ? null : parseFloat(editVals.price) };
+                    const payload = {
+                        name: editVals.name, unit: editVals.unit, price: editVals.price === '' ? null : parseFloat(editVals.price),
+                        pack_unit: editVals.packUnit.trim() || null, pack_size: editVals.packSize === '' ? null : parseFloat(editVals.packSize)
+                    };
                     if (isAdmin) {
                         payload.cost = editVals.cost === '' ? null : parseFloat(editVals.cost);
                         payload.wholesale_price = editVals.wholesalePrice === '' ? null : parseFloat(editVals.wholesalePrice);
@@ -1302,6 +1307,16 @@
                                     <input type="text" value={newProd.category} onChange={(e) => setNewProd({...newProd, category: e.target.value})} />
                                 </div>
                             </div>
+                            <div className="grid-2">
+                                <div className="form-group">
+                                    <label>หน่วยที่รับจากผู้ผลิต (ถ้ามี)</label>
+                                    <UnitInput value={newProd.packUnit} onChange={(v) => setNewProd({...newProd, packUnit: v})} options={PACK_UNITS} placeholder="-- เลือกหน่วย --" />
+                                </div>
+                                <div className="form-group">
+                                    <label>จำนวนหน่วยต่อแพ็ค</label>
+                                    <input type="number" min="1" value={newProd.packSize} onChange={(e) => setNewProd({...newProd, packSize: e.target.value})} />
+                                </div>
+                            </div>
                             {isAdmin && (
                                 <div className="grid-2">
                                     <div className="form-group">
@@ -1359,6 +1374,16 @@
                                             <div className="form-group">
                                                 <label>ราคา</label>
                                                 <input type="number" value={editVals.price} onChange={(e) => setEditVals({...editVals, price: e.target.value})} />
+                                            </div>
+                                        </div>
+                                        <div className="grid-2">
+                                            <div className="form-group">
+                                                <label>หน่วยที่รับจากผู้ผลิต (ถ้ามี)</label>
+                                                <UnitInput value={editVals.packUnit} onChange={(v) => setEditVals({...editVals, packUnit: v})} options={PACK_UNITS} placeholder="-- เลือกหน่วย --" />
+                                            </div>
+                                            <div className="form-group">
+                                                <label>จำนวนหน่วยต่อแพ็ค</label>
+                                                <input type="number" min="1" value={editVals.packSize} onChange={(e) => setEditVals({...editVals, packSize: e.target.value})} />
                                             </div>
                                         </div>
                                         {isAdmin && (
