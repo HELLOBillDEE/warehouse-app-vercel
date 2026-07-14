@@ -210,6 +210,7 @@
         const IconPin = () => (<svg {...iconProps}><path d="M12 21s6.5-6.2 6.5-11.2A6.5 6.5 0 105.5 9.8C5.5 14.8 12 21 12 21z" /><circle cx="12" cy="9.7" r="2.3" /></svg>);
         const IconUser = () => (<svg {...iconProps}><circle cx="12" cy="8.3" r="3.3" /><path d="M5 20c1-3.9 3.8-5.8 7-5.8s6 1.9 7 5.8" /></svg>);
         const IconCart = () => (<svg {...iconProps}><path d="M4 5h2l2 11h10l2-8H7" /><circle cx="10" cy="19" r="1.3" fill="currentColor" stroke="none" /><circle cx="17" cy="19" r="1.3" fill="currentColor" stroke="none" /></svg>);
+        const IconTruck = () => (<svg {...iconProps}><rect x="2.5" y="7.5" width="11" height="9" rx="1.5" /><path d="M13.5 10.5h4l3 3.5v2.5h-7z" /><circle cx="7" cy="18.5" r="1.6" /><circle cx="16.5" cy="18.5" r="1.6" /></svg>);
         const IconLogo = () => (<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="white" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3.5l8 4v9l-8 4-8-4v-9l8-4z" /><path d="M4 7.5l8 4 8-4M12 11.5v9" /></svg>);
 
         function Home({ products, locations, stock, movements }) {
@@ -1189,12 +1190,14 @@
             const [editId, setEditId] = useState(null);
             const [editVals, setEditVals] = useState({});
             const [showAdd, setShowAdd] = useState(false);
-            const [newProd, setNewProd] = useState({ code: '', name: '', unit: '', price: '', cost: '', wholesalePrice: '', category: '', packUnit: '', packSize: '' });
+            const [newProd, setNewProd] = useState({ code: '', name: '', unit: '', price: '', cost: '', wholesalePrice: '', category: '', company: '', packUnit: '', packSize: '', activeIngredient: '', usageInfo: '', restrictions: '' });
             const matchesSearch = (p) =>
                 p.product_code?.includes(search.toUpperCase()) ||
                 p.name?.includes(search) ||
                 p.company?.includes(search) ||
-                p.category?.includes(search);
+                p.category?.includes(search) ||
+                p.active_ingredient?.includes(search) ||
+                p.usage_info?.includes(search);
             const filtered = (locFilter
                 ? products.filter(p => stock.some(s => s.product_id === p.id && s.location_id === locFilter && parseFloat(s.quantity) > 0))
                 : products
@@ -1212,8 +1215,12 @@
                         unit: newProd.unit.trim() || null,
                         price: newProd.price === '' ? null : parseFloat(newProd.price),
                         category: newProd.category.trim() || null,
+                        company: newProd.company.trim() || null,
                         pack_unit: newProd.packUnit.trim() || null,
-                        pack_size: newProd.packSize === '' ? null : parseFloat(newProd.packSize)
+                        pack_size: newProd.packSize === '' ? null : parseFloat(newProd.packSize),
+                        active_ingredient: newProd.activeIngredient.trim() || null,
+                        usage_info: newProd.usageInfo.trim() || null,
+                        restrictions: newProd.restrictions.trim() || null
                     };
                     if (isAdmin) {
                         payload.cost = newProd.cost === '' ? null : parseFloat(newProd.cost);
@@ -1221,7 +1228,7 @@
                     }
                     await client.from('products').insert([payload]);
                     flash('เพิ่มสินค้าใหม่สำเร็จ', 'success');
-                    setNewProd({ code: '', name: '', unit: '', price: '', cost: '', wholesalePrice: '', category: '', packUnit: '', packSize: '' });
+                    setNewProd({ code: '', name: '', unit: '', price: '', cost: '', wholesalePrice: '', category: '', company: '', packUnit: '', packSize: '', activeIngredient: '', usageInfo: '', restrictions: '' });
                     setShowAdd(false);
                     await loadData();
                 } catch (err) {
@@ -1241,7 +1248,12 @@
                     expiryByLoc[l.id] = '';
                 });
                 setEditId(p.id);
-                setEditVals({ name: p.name, unit: p.unit || '', price: p.price || '', cost: p.cost || '', wholesalePrice: p.wholesale_price || '', packUnit: p.pack_unit || '', packSize: p.pack_size || '', qtyByLoc, lotByLoc, expiryByLoc });
+                setEditVals({
+                    name: p.name, unit: p.unit || '', price: p.price || '', cost: p.cost || '', wholesalePrice: p.wholesale_price || '',
+                    packUnit: p.pack_unit || '', packSize: p.pack_size || '', category: p.category || '', company: p.company || '',
+                    activeIngredient: p.active_ingredient || '', usageInfo: p.usage_info || '', restrictions: p.restrictions || '',
+                    qtyByLoc, lotByLoc, expiryByLoc
+                });
             };
 
             const cancelEdit = () => { setEditId(null); setEditVals({}); };
@@ -1250,7 +1262,10 @@
                 try {
                     const payload = {
                         name: editVals.name, unit: editVals.unit, price: editVals.price === '' ? null : parseFloat(editVals.price),
-                        pack_unit: editVals.packUnit.trim() || null, pack_size: editVals.packSize === '' ? null : parseFloat(editVals.packSize)
+                        pack_unit: editVals.packUnit.trim() || null, pack_size: editVals.packSize === '' ? null : parseFloat(editVals.packSize),
+                        category: editVals.category.trim() || null, company: editVals.company.trim() || null,
+                        active_ingredient: editVals.activeIngredient.trim() || null, usage_info: editVals.usageInfo.trim() || null,
+                        restrictions: editVals.restrictions.trim() || null
                     };
                     if (isAdmin) {
                         payload.cost = editVals.cost === '' ? null : parseFloat(editVals.cost);
@@ -1328,6 +1343,10 @@
                                     <input type="text" value={newProd.category} onChange={(e) => setNewProd({...newProd, category: e.target.value})} />
                                 </div>
                             </div>
+                            <div className="form-group">
+                                <label>บริษัท/แบรนด์ (ถ้ามี)</label>
+                                <input type="text" value={newProd.company} onChange={(e) => setNewProd({...newProd, company: e.target.value})} />
+                            </div>
                             <div className="grid-2">
                                 <div className="form-group">
                                     <label>หน่วยที่รับจากผู้ผลิต (ถ้ามี)</label>
@@ -1337,6 +1356,18 @@
                                     <label>จำนวนหน่วยต่อแพ็ค</label>
                                     <input type="number" min="1" value={newProd.packSize} onChange={(e) => setNewProd({...newProd, packSize: e.target.value})} />
                                 </div>
+                            </div>
+                            <div className="form-group">
+                                <label>สารเคมี/สารออกฤทธิ์ (ถ้ามี)</label>
+                                <input type="text" value={newProd.activeIngredient} onChange={(e) => setNewProd({...newProd, activeIngredient: e.target.value})} />
+                            </div>
+                            <div className="form-group">
+                                <label>สรรพคุณ / ใช้รักษา-กำจัดอะไร (ถ้ามี)</label>
+                                <textarea value={newProd.usageInfo} onChange={(e) => setNewProd({...newProd, usageInfo: e.target.value})} rows="2"></textarea>
+                            </div>
+                            <div className="form-group">
+                                <label>ข้อจำกัดการใช้ (ถ้ามี)</label>
+                                <textarea value={newProd.restrictions} onChange={(e) => setNewProd({...newProd, restrictions: e.target.value})} rows="2"></textarea>
                             </div>
                             {isAdmin && (
                                 <div className="grid-2">
@@ -1376,7 +1407,12 @@
                                     return (
                                         <React.Fragment key={p.id}>
                                             <tr>
-                                                <td><strong>{p.product_code}</strong><br />{p.name}{p.pack_unit && p.pack_size ? <div style={{fontSize: '11px', color: 'var(--text-muted)'}}>หน่วยบรรจุ: {formatUnit(p)}</div> : null}</td>
+                                                <td>
+                                                    <strong>{p.product_code}</strong><br />{p.name}
+                                                    {p.pack_unit && p.pack_size ? <div style={{fontSize: '11px', color: 'var(--text-muted)'}}>หน่วยบรรจุ: {formatUnit(p)}</div> : null}
+                                                    {p.active_ingredient ? <div style={{fontSize: '11px', color: 'var(--text-muted)'}}>สาร: {p.active_ingredient}</div> : null}
+                                                    {p.usage_info ? <div style={{fontSize: '11px', color: 'var(--text-muted)'}}>สรรพคุณ: {p.usage_info}</div> : null}
+                                                </td>
                                                 <td>{p.company || '-'}</td>
                                                 <td>{p.category ? <span className="badge badge-adj">{p.category}</span> : '-'}</td>
                                                 <td style={{fontWeight: 700, fontSize: '16px'}}>{tot.toFixed(0)}</td>
@@ -1423,6 +1459,28 @@
                                                                 <label>จำนวนหน่วยต่อแพ็ค</label>
                                                                 <input type="number" min="1" value={editVals.packSize} onChange={(e) => setEditVals({...editVals, packSize: e.target.value})} />
                                                             </div>
+                                                        </div>
+                                                        <div className="grid-2">
+                                                            <div className="form-group">
+                                                                <label>หมวดหมู่</label>
+                                                                <input type="text" value={editVals.category} onChange={(e) => setEditVals({...editVals, category: e.target.value})} />
+                                                            </div>
+                                                            <div className="form-group">
+                                                                <label>บริษัท/แบรนด์</label>
+                                                                <input type="text" value={editVals.company} onChange={(e) => setEditVals({...editVals, company: e.target.value})} />
+                                                            </div>
+                                                        </div>
+                                                        <div className="form-group">
+                                                            <label>สารเคมี/สารออกฤทธิ์</label>
+                                                            <input type="text" value={editVals.activeIngredient} onChange={(e) => setEditVals({...editVals, activeIngredient: e.target.value})} />
+                                                        </div>
+                                                        <div className="form-group">
+                                                            <label>สรรพคุณ / ใช้รักษา-กำจัดอะไร</label>
+                                                            <textarea value={editVals.usageInfo} onChange={(e) => setEditVals({...editVals, usageInfo: e.target.value})} rows="2"></textarea>
+                                                        </div>
+                                                        <div className="form-group">
+                                                            <label>ข้อจำกัดการใช้</label>
+                                                            <textarea value={editVals.restrictions} onChange={(e) => setEditVals({...editVals, restrictions: e.target.value})} rows="2"></textarea>
                                                         </div>
                                                         {isAdmin && (
                                                             <div className="grid-2">
@@ -1830,6 +1888,89 @@
             );
         }
 
+        function SupplierManagement({ suppliers, loadData, msg, msgType, flash }) {
+            const [name, setName] = useState('');
+            const [editId, setEditId] = useState(null);
+            const [editVals, setEditVals] = useState({ name: '' });
+
+            const add = async () => {
+                if (!name.trim()) { flash('ระบุชื่อผู้ผลิต/ซัพพลายเออร์'); return; }
+                try {
+                    await client.from('suppliers').insert([{ name: name.trim() }]);
+                    flash('เพิ่มสำเร็จ', 'success');
+                    setName('');
+                    await loadData();
+                } catch (err) {
+                    flash('Error: ' + err.message, 'error');
+                }
+            };
+
+            const startEdit = (s) => { setEditId(s.id); setEditVals({ name: s.name }); };
+            const cancelEdit = () => { setEditId(null); setEditVals({ name: '' }); };
+
+            const saveEdit = async (s) => {
+                if (!editVals.name.trim()) { flash('ระบุชื่อ'); return; }
+                try {
+                    await client.from('suppliers').update({ name: editVals.name.trim() }).eq('id', s.id);
+                    flash('บันทึกสำเร็จ', 'success');
+                    cancelEdit();
+                    await loadData();
+                } catch (err) {
+                    flash('Error: ' + err.message, 'error');
+                }
+            };
+
+            const remove = async (s) => {
+                if (!confirm('ลบผู้ผลิต/ซัพพลายเออร์ "' + s.name + '" ใช่หรือไม่?')) return;
+                try {
+                    const { error } = await client.from('suppliers').delete().eq('id', s.id);
+                    if (error) throw error;
+                    flash('ลบสำเร็จ', 'success');
+                    await loadData();
+                } catch (err) {
+                    flash('Error: ' + err.message, 'error');
+                }
+            };
+
+            return (
+                <div>
+                    <h2>จัดการผู้ผลิต/ซัพพลายเออร์</h2>
+                    {msg && <div className={'alert alert-' + msgType}>{msg}</div>}
+                    <div className="form-group">
+                        <label>ชื่อผู้ผลิต/ซัพพลายเออร์</label>
+                        <input type="text" value={name} onChange={(e) => setName(e.target.value)} />
+                    </div>
+                    <button onClick={add}>เพิ่มผู้ผลิต/ซัพพลายเออร์</button>
+                    <h3 style={{marginTop: '25px'}}>ผู้ผลิต/ซัพพลายเออร์ทั้งหมด</h3>
+                    {suppliers.map(s => (
+                        <div key={s.id} className="card">
+                            {editId === s.id ? (
+                                <div>
+                                    <div className="form-group">
+                                        <label>ชื่อผู้ผลิต/ซัพพลายเออร์</label>
+                                        <input type="text" value={editVals.name} onChange={(e) => setEditVals({...editVals, name: e.target.value})} />
+                                    </div>
+                                    <div className="row-actions">
+                                        <button onClick={() => saveEdit(s)}>บันทึก</button>
+                                        <button className="secondary" onClick={cancelEdit}>ยกเลิก</button>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+                                    <strong>{s.name}</strong>
+                                    <div className="row-actions">
+                                        <button className="small secondary" onClick={() => startEdit(s)}>แก้ไข</button>
+                                        <button className="small danger" onClick={() => remove(s)}>ลบ</button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    ))}
+                    {suppliers.length === 0 && <div style={{color: 'var(--text-muted)', padding: '10px'}}>ยังไม่มีผู้ผลิต/ซัพพลายเออร์ (จะถูกเพิ่มอัตโนมัติเมื่อพิมพ์ชื่อใหม่ในหน้ารับเข้า/สั่งซื้อ)</div>}
+                </div>
+            );
+        }
+
         function Login({ onLogin }) {
             const [staffList, setStaffList] = useState([]);
             const [loadingStaff, setLoadingStaff] = useState(true);
@@ -2098,6 +2239,7 @@
                             <button className={'nav-tab ' + (tab === 'expiry' ? 'active' : '')} onClick={() => { setTab('expiry'); setMsg(''); }}><IconAlert />ใกล้หมดอายุ{soonCount > 0 ? ' (' + soonCount + ')' : ''}</button>
                             <button className={'nav-tab ' + (tab === 'history' ? 'active' : '')} onClick={() => { setTab('history'); setMsg(''); }}><IconHistory />ประวัติ</button>
                             <button className={'nav-tab ' + (tab === 'locations' ? 'active' : '')} onClick={() => { setTab('locations'); setMsg(''); }}><IconPin />ที่อยู่</button>
+                            <button className={'nav-tab ' + (tab === 'suppliers' ? 'active' : '')} onClick={() => { setTab('suppliers'); setMsg(''); }}><IconTruck />ผู้ผลิต</button>
                             {currentStaff.is_admin && <button className={'nav-tab ' + (tab === 'staff' ? 'active' : '')} onClick={() => { setTab('staff'); setMsg(''); }}><IconUser />พนักงาน</button>}
                         </div>
                         <div style={{marginTop: 'auto', paddingTop: '16px', borderTop: '1px solid var(--border)'}}>
@@ -2115,6 +2257,7 @@
                         {tab === 'expiry' && <ExpiryAlerts {...shared} />}
                         {tab === 'history' && <History {...shared} />}
                         {tab === 'locations' && <Locations {...shared} />}
+                        {tab === 'suppliers' && <SupplierManagement {...shared} />}
                         {tab === 'staff' && currentStaff.is_admin && <StaffManagement {...shared} />}
                     </div>
                 </div>
