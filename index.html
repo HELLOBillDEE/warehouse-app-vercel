@@ -1505,6 +1505,20 @@
                 setSel({ ...sel, [r.id]: { checked: sel[r.id]?.checked ?? true, qty } });
             };
 
+            const setPackQty = (r, packs) => {
+                const packSize = parseFloat(r.product.pack_size) || 1;
+                const subUnits = parseFloat(sel[r.id]?.subUnits) || 0;
+                const qty = (parseFloat(packs) || 0) * packSize + subUnits;
+                setSel({ ...sel, [r.id]: { checked: sel[r.id]?.checked ?? true, packs, subUnits: sel[r.id]?.subUnits ?? '', qty } });
+            };
+
+            const setSubQty = (r, subUnits) => {
+                const packSize = parseFloat(r.product.pack_size) || 1;
+                const packs = parseFloat(sel[r.id]?.packs) || 0;
+                const qty = packs * packSize + (parseFloat(subUnits) || 0);
+                setSel({ ...sel, [r.id]: { checked: sel[r.id]?.checked ?? true, packs: sel[r.id]?.packs ?? '', subUnits, qty } });
+            };
+
             const handle = async () => {
                 if (!fromLoc || !toLoc) { flash('เลือกต้นทางและปลายทาง'); return; }
                 if (fromLoc === toLoc) { flash('ต้นทางและปลายทางต้องไม่ใช่ที่เดียวกัน'); return; }
@@ -1585,9 +1599,21 @@
                                             <td><input type="checkbox" style={{width: 'auto'}} checked={!!sel[r.id]?.checked} onChange={(e) => toggleRow(r, e.target.checked)} /></td>
                                             <td>{r.product.product_code} - {r.product.name}</td>
                                             <td>{isUnassigned ? '-' : r.quantity + ' ' + (r.product.unit || '')} {!isUnassigned && formatUnit(r.product) !== (r.product.unit || '') ? '(' + formatUnit(r.product) + ')' : ''}</td>
-                                            <td style={{display: 'flex', alignItems: 'center', gap: '6px'}}>
-                                                <input type="number" min="0" max={isUnassigned ? undefined : r.quantity} value={sel[r.id]?.qty ?? r.quantity} onChange={(e) => setQty(r, e.target.value)} style={{maxWidth: '90px'}} />
-                                                <span style={{fontSize: '12px', color: 'var(--text-muted)'}}>{r.product.unit || ''}</span>
+                                            <td>
+                                                {r.product.pack_unit && r.product.pack_size ? (
+                                                    <div style={{display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap'}}>
+                                                        <input type="number" min="0" placeholder="0" value={sel[r.id]?.packs ?? ''} onChange={(e) => setPackQty(r, e.target.value)} style={{maxWidth: '70px'}} />
+                                                        <span style={{fontSize: '12px', color: 'var(--text-muted)'}}>{r.product.pack_unit}</span>
+                                                        <input type="number" min="0" placeholder="0" value={sel[r.id]?.subUnits ?? ''} onChange={(e) => setSubQty(r, e.target.value)} style={{maxWidth: '70px'}} />
+                                                        <span style={{fontSize: '12px', color: 'var(--text-muted)'}}>{r.product.unit || ''}</span>
+                                                        <span style={{fontSize: '11px', color: 'var(--text-muted)'}}>(= {sel[r.id]?.qty || 0} {r.product.unit})</span>
+                                                    </div>
+                                                ) : (
+                                                    <div style={{display: 'flex', alignItems: 'center', gap: '6px'}}>
+                                                        <input type="number" min="0" max={isUnassigned ? undefined : r.quantity} value={sel[r.id]?.qty ?? r.quantity} onChange={(e) => setQty(r, e.target.value)} style={{maxWidth: '90px'}} />
+                                                        <span style={{fontSize: '12px', color: 'var(--text-muted)'}}>{r.product.unit || ''}</span>
+                                                    </div>
+                                                )}
                                             </td>
                                         </tr>
                                     ))}
