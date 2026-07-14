@@ -1888,30 +1888,41 @@
             );
         }
 
-        function SupplierManagement({ suppliers, loadData, msg, msgType, flash }) {
-            const [name, setName] = useState('');
+        function SupplierManagement({ suppliers, tradeNames, loadData, msg, msgType, flash }) {
+            const blankForm = { name: '', fullName: '', address: '', phone: '' };
+            const [form, setForm] = useState(blankForm);
             const [editId, setEditId] = useState(null);
-            const [editVals, setEditVals] = useState({ name: '' });
+            const [editVals, setEditVals] = useState(blankForm);
+            const [newTag, setNewTag] = useState({});
 
             const add = async () => {
-                if (!name.trim()) { flash('ระบุชื่อผู้ผลิต/ซัพพลายเออร์'); return; }
+                if (!form.name.trim()) { flash('ระบุชื่อผู้ผลิต/ซัพพลายเออร์'); return; }
                 try {
-                    await client.from('suppliers').insert([{ name: name.trim() }]);
+                    await client.from('suppliers').insert([{
+                        name: form.name.trim(), full_name: form.fullName.trim() || null,
+                        address: form.address.trim() || null, phone: form.phone.trim() || null
+                    }]);
                     flash('เพิ่มสำเร็จ', 'success');
-                    setName('');
+                    setForm(blankForm);
                     await loadData();
                 } catch (err) {
                     flash('Error: ' + err.message, 'error');
                 }
             };
 
-            const startEdit = (s) => { setEditId(s.id); setEditVals({ name: s.name }); };
-            const cancelEdit = () => { setEditId(null); setEditVals({ name: '' }); };
+            const startEdit = (s) => {
+                setEditId(s.id);
+                setEditVals({ name: s.name, fullName: s.full_name || '', address: s.address || '', phone: s.phone || '' });
+            };
+            const cancelEdit = () => { setEditId(null); setEditVals(blankForm); };
 
             const saveEdit = async (s) => {
                 if (!editVals.name.trim()) { flash('ระบุชื่อ'); return; }
                 try {
-                    await client.from('suppliers').update({ name: editVals.name.trim() }).eq('id', s.id);
+                    await client.from('suppliers').update({
+                        name: editVals.name.trim(), full_name: editVals.fullName.trim() || null,
+                        address: editVals.address.trim() || null, phone: editVals.phone.trim() || null
+                    }).eq('id', s.id);
                     flash('บันทึกสำเร็จ', 'success');
                     cancelEdit();
                     await loadData();
@@ -1932,23 +1943,78 @@
                 }
             };
 
+            const addTag = async (s) => {
+                const tag = (newTag[s.id] || '').trim();
+                if (!tag) return;
+                try {
+                    await client.from('supplier_trade_names').insert([{ supplier_id: s.id, trade_name: tag }]);
+                    setNewTag({ ...newTag, [s.id]: '' });
+                    await loadData();
+                } catch (err) {
+                    flash('Error: ' + err.message, 'error');
+                }
+            };
+
+            const removeTag = async (t) => {
+                try {
+                    await client.from('supplier_trade_names').delete().eq('id', t.id);
+                    await loadData();
+                } catch (err) {
+                    flash('Error: ' + err.message, 'error');
+                }
+            };
+
             return (
                 <div>
                     <h2>จัดการผู้ผลิต/ซัพพลายเออร์</h2>
                     {msg && <div className={'alert alert-' + msgType}>{msg}</div>}
-                    <div className="form-group">
-                        <label>ชื่อผู้ผลิต/ซัพพลายเออร์</label>
-                        <input type="text" value={name} onChange={(e) => setName(e.target.value)} />
+                    <div className="grid-2">
+                        <div className="form-group">
+                            <label>ชื่อเรียก (สั้นๆ ใช้แสดงในระบบ)</label>
+                            <input type="text" value={form.name} onChange={(e) => setForm({...form, name: e.target.value})} />
+                        </div>
+                        <div className="form-group">
+                            <label>ชื่อบริษัทเต็ม (ถ้ามี)</label>
+                            <input type="text" value={form.fullName} onChange={(e) => setForm({...form, fullName: e.target.value})} />
+                        </div>
+                    </div>
+                    <div className="grid-2">
+                        <div className="form-group">
+                            <label>ที่อยู่ (ถ้ามี)</label>
+                            <input type="text" value={form.address} onChange={(e) => setForm({...form, address: e.target.value})} />
+                        </div>
+                        <div className="form-group">
+                            <label>เบอร์โทร (ถ้ามี)</label>
+                            <input type="text" value={form.phone} onChange={(e) => setForm({...form, phone: e.target.value})} />
+                        </div>
                     </div>
                     <button onClick={add}>เพิ่มผู้ผลิต/ซัพพลายเออร์</button>
                     <h3 style={{marginTop: '25px'}}>ผู้ผลิต/ซัพพลายเออร์ทั้งหมด</h3>
-                    {suppliers.map(s => (
+                    {suppliers.map(s => {
+                        const tags = tradeNames.filter(t => t.supplier_id === s.id);
+                        return (
                         <div key={s.id} className="card">
                             {editId === s.id ? (
                                 <div>
-                                    <div className="form-group">
-                                        <label>ชื่อผู้ผลิต/ซัพพลายเออร์</label>
-                                        <input type="text" value={editVals.name} onChange={(e) => setEditVals({...editVals, name: e.target.value})} />
+                                    <div className="grid-2">
+                                        <div className="form-group">
+                                            <label>ชื่อเรียก (สั้นๆ)</label>
+                                            <input type="text" value={editVals.name} onChange={(e) => setEditVals({...editVals, name: e.target.value})} />
+                                        </div>
+                                        <div className="form-group">
+                                            <label>ชื่อบริษัทเต็ม</label>
+                                            <input type="text" value={editVals.fullName} onChange={(e) => setEditVals({...editVals, fullName: e.target.value})} />
+                                        </div>
+                                    </div>
+                                    <div className="grid-2">
+                                        <div className="form-group">
+                                            <label>ที่อยู่</label>
+                                            <input type="text" value={editVals.address} onChange={(e) => setEditVals({...editVals, address: e.target.value})} />
+                                        </div>
+                                        <div className="form-group">
+                                            <label>เบอร์โทร</label>
+                                            <input type="text" value={editVals.phone} onChange={(e) => setEditVals({...editVals, phone: e.target.value})} />
+                                        </div>
                                     </div>
                                     <div className="row-actions">
                                         <button onClick={() => saveEdit(s)}>บันทึก</button>
@@ -1956,16 +2022,36 @@
                                     </div>
                                 </div>
                             ) : (
-                                <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
-                                    <strong>{s.name}</strong>
-                                    <div className="row-actions">
-                                        <button className="small secondary" onClick={() => startEdit(s)}>แก้ไข</button>
-                                        <button className="small danger" onClick={() => remove(s)}>ลบ</button>
+                                <div>
+                                    <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'start'}}>
+                                        <div>
+                                            <strong>{s.name}</strong>
+                                            {s.full_name && <div style={{fontSize: '12px', color: 'var(--text-muted)'}}>{s.full_name}</div>}
+                                            {s.address && <div style={{fontSize: '12px', color: 'var(--text-muted)'}}>📍 {s.address}</div>}
+                                            {s.phone && <div style={{fontSize: '12px', color: 'var(--text-muted)'}}>☎ {s.phone}</div>}
+                                        </div>
+                                        <div className="row-actions">
+                                            <button className="small secondary" onClick={() => startEdit(s)}>แก้ไข</button>
+                                            <button className="small danger" onClick={() => remove(s)}>ลบ</button>
+                                        </div>
+                                    </div>
+                                    <div style={{marginTop: '10px'}}>
+                                        <div style={{fontSize: '12px', color: 'var(--text-muted)', marginBottom: '4px'}}>ชื่อการค้า/แบรนด์ย่อย (รวมยอดซื้อเป็นบริษัทเดียวกัน):</div>
+                                        <div className="loc-tags">
+                                            {tags.map(t => (
+                                                <span key={t.id} className="loc-tag">{t.trade_name} <span style={{cursor: 'pointer', color: '#c0392b'}} onClick={() => removeTag(t)}> ✕</span></span>
+                                            ))}
+                                        </div>
+                                        <div style={{display: 'flex', gap: '6px', marginTop: '6px'}}>
+                                            <input type="text" placeholder="เพิ่มชื่อการค้า..." value={newTag[s.id] || ''} onChange={(e) => setNewTag({...newTag, [s.id]: e.target.value})} style={{maxWidth: '220px'}} />
+                                            <button className="small secondary" onClick={() => addTag(s)}>+ เพิ่ม</button>
+                                        </div>
                                     </div>
                                 </div>
                             )}
                         </div>
-                    ))}
+                        );
+                    })}
                     {suppliers.length === 0 && <div style={{color: 'var(--text-muted)', padding: '10px'}}>ยังไม่มีผู้ผลิต/ซัพพลายเออร์ (จะถูกเพิ่มอัตโนมัติเมื่อพิมพ์ชื่อใหม่ในหน้ารับเข้า/สั่งซื้อ)</div>}
                 </div>
             );
@@ -2156,6 +2242,7 @@
             const [lots, setLots] = useState([]);
             const [staff, setStaff] = useState([]);
             const [suppliers, setSuppliers] = useState([]);
+            const [tradeNames, setTradeNames] = useState([]);
             const [loading, setLoading] = useState(true);
             const [msg, setMsg] = useState('');
             const [msgType, setMsgType] = useState('error');
@@ -2187,13 +2274,14 @@
                         }
                         if (!res.data || res.data.length < 1000) break;
                     }
-                    const [locRes, stockRes, movRes, lotRes, staffRes, supplierRes] = await Promise.all([
+                    const [locRes, stockRes, movRes, lotRes, staffRes, supplierRes, tradeNameRes] = await Promise.all([
                         client.from('storage_locations').select('*'),
                         client.from('product_location_stock').select('*').limit(10000),
                         client.from('stock_movements').select('*').order('created_at', { ascending: false }).limit(300),
                         client.from('stock_lots').select('*').gt('quantity', 0).order('expiry_date', { ascending: true }).limit(2000),
                         client.from('staff').select('*').order('name'),
-                        client.from('suppliers').select('*').order('name')
+                        client.from('suppliers').select('*').order('name'),
+                        client.from('supplier_trade_names').select('*').order('trade_name')
                     ]);
                     setProducts(allProds);
                     setLocations(locRes.data || []);
@@ -2202,6 +2290,7 @@
                     setLots(lotRes.data || []);
                     setStaff(staffRes.data || []);
                     setSuppliers(supplierRes.data || []);
+                    setTradeNames(tradeNameRes.data || []);
                 } catch (err) {
                     flash('Error: ' + err.message, 'error');
                 }
@@ -2216,7 +2305,7 @@
                 setCurrentStaff(null);
             };
 
-            const shared = { products, locations, stock, movements, lots, staff, suppliers, loadData, msg, msgType, flash, staffName: currentStaff.name, isAdmin: currentStaff.is_admin, receiveSeed, clearReceiveSeed: () => setReceiveSeed(null), goReceiveFromPo };
+            const shared = { products, locations, stock, movements, lots, staff, suppliers, tradeNames, loadData, msg, msgType, flash, staffName: currentStaff.name, isAdmin: currentStaff.is_admin, receiveSeed, clearReceiveSeed: () => setReceiveSeed(null), goReceiveFromPo };
             const soonCount = lots.filter(l => l.expiry_date && daysUntil(l.expiry_date) <= 30).length;
 
             return (
