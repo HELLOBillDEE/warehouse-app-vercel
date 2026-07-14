@@ -1396,7 +1396,7 @@
                         <table>
                             <thead>
                                 <tr>
-                                    <th>สินค้า</th><th>บริษัท</th><th>หมวดหมู่</th><th>{locFilter ? 'คงเหลือ' : 'คงเหลือรวม'}</th><th>หน่วย</th><th>ราคา</th><th>รายละเอียดสถานที่</th><th>จัดการ</th>
+                                    <th>สินค้า</th><th>บริษัท</th><th>หมวดหมู่</th><th>{locFilter ? 'คงเหลือ' : 'คงเหลือรวม'}</th><th>หน่วย</th><th>ราคา</th><th>รายละเอียดสถานที่</th><th style={{position: 'sticky', right: 0, background: 'var(--card, #fff)', boxShadow: '-2px 0 4px rgba(0,0,0,0.08)'}}>จัดการ</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -1446,8 +1446,8 @@
                                                         return (<div key={s.id} style={{fontSize: '12px'}}>{l ? l.name : '-'}: <strong>{s.quantity}</strong></div>);
                                                     })}
                                                 </td>
-                                                <td>
-                                                    <div className="row-actions">
+                                                <td style={{position: 'sticky', right: 0, background: 'var(--card, #fff)', boxShadow: '-2px 0 4px rgba(0,0,0,0.08)'}}>
+                                                    <div className="row-actions" style={{flexWrap: 'wrap'}}>
                                                         <button className="small" style={{background: '#17a2b8', color: 'white'}} onClick={() => startEdit(p)}>จำนวน</button>
                                                         <button className="small secondary" onClick={() => startEdit(p)}>ราคา</button>
                                                         <button className="small danger" onClick={() => deleteProduct(p)}>ลบ</button>
