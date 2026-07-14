@@ -1189,6 +1189,7 @@
             const [locFilter, setLocFilter] = useState('');
             const [expandedInfo, setExpandedInfo] = useState({});
             const [editId, setEditId] = useState(null);
+            const [editMode, setEditMode] = useState('full');
             const [editVals, setEditVals] = useState({});
             const [showAdd, setShowAdd] = useState(false);
             const [newProd, setNewProd] = useState({ code: '', name: '', unit: '', price: '', cost: '', wholesalePrice: '', category: '', company: '', packUnit: '', packSize: '', activeIngredient: '', usageInfo: '', restrictions: '' });
@@ -1257,7 +1258,7 @@
                 });
             };
 
-            const cancelEdit = () => { setEditId(null); setEditVals({}); };
+            const cancelEdit = () => { setEditId(null); setEditVals({}); setEditMode('full'); };
 
             const saveEdit = async (p) => {
                 try {
@@ -1448,8 +1449,8 @@
                                                 </td>
                                                 <td style={{position: 'sticky', right: 0, background: 'var(--card, #fff)', boxShadow: '-2px 0 4px rgba(0,0,0,0.08)'}}>
                                                     <div className="row-actions" style={{flexWrap: 'wrap'}}>
-                                                        <button className="small" style={{background: '#17a2b8', color: 'white'}} onClick={() => startEdit(p)}>จำนวน</button>
-                                                        <button className="small secondary" onClick={() => startEdit(p)}>ราคา</button>
+                                                        <button className="small" style={{background: '#17a2b8', color: 'white'}} onClick={() => { startEdit(p); setEditMode('quick'); }}>จำนวน</button>
+                                                        <button className="small secondary" onClick={() => { startEdit(p); setEditMode('full'); }}>แก้ไข</button>
                                                         <button className="small danger" onClick={() => deleteProduct(p)}>ลบ</button>
                                                     </div>
                                                 </td>
@@ -1457,6 +1458,8 @@
                                             {isEditing && (
                                                 <tr>
                                                     <td colSpan="8">
+                                                        <h3 style={{marginBottom: '10px'}}>{editMode === 'quick' ? 'แก้ไขจำนวนสต็อก (ด่วน)' : 'แก้ไขสินค้า'}</h3>
+                                                        {editMode === 'full' && (<>
                                                         <div className="grid-3">
                                                             <div className="form-group">
                                                                 <label>ชื่อ</label>
@@ -1515,12 +1518,14 @@
                                                                 </div>
                                                             </div>
                                                         )}
+                                                        </>)}
                                                         {locations.map(l => (
                                                             <div key={l.id} style={{border: '1px solid var(--border)', borderRadius: '10px', padding: '10px', marginBottom: '10px'}}>
-                                                                <div className="form-group" style={{marginBottom: '10px'}}>
+                                                                <div className="form-group" style={{marginBottom: editMode === 'full' ? '10px' : 0}}>
                                                                     <label>จำนวนที่ 📍 {l.name}</label>
                                                                     <input type="number" value={editVals.qtyByLoc[l.id]} onChange={(e) => setEditVals({...editVals, qtyByLoc: {...editVals.qtyByLoc, [l.id]: e.target.value}})} />
                                                                 </div>
+                                                                {editMode === 'full' && (
                                                                 <div className="grid-2">
                                                                     <div className="form-group">
                                                                         <label>LOT (ถ้าเพิ่มจำนวน)</label>
@@ -1531,6 +1536,7 @@
                                                                         <input type="date" value={editVals.expiryByLoc[l.id]} onChange={(e) => setEditVals({...editVals, expiryByLoc: {...editVals.expiryByLoc, [l.id]: e.target.value}})} />
                                                                     </div>
                                                                 </div>
+                                                                )}
                                                             </div>
                                                         ))}
                                                         <div className="row-actions">
