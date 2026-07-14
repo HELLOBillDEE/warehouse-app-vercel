@@ -1189,7 +1189,12 @@
             const [editVals, setEditVals] = useState({});
             const [showAdd, setShowAdd] = useState(false);
             const [newProd, setNewProd] = useState({ code: '', name: '', unit: '', price: '', cost: '', wholesalePrice: '', category: '', packUnit: '', packSize: '' });
-            const filtered = products.filter(p => p.product_code?.includes(search.toUpperCase()) || p.name?.includes(search)).slice(0, 50);
+            const filtered = products.filter(p =>
+                p.product_code?.includes(search.toUpperCase()) ||
+                p.name?.includes(search) ||
+                p.company?.includes(search) ||
+                p.category?.includes(search)
+            ).slice(0, 50);
 
             const addProduct = async () => {
                 if (!newProd.code.trim() || !newProd.name.trim()) { flash('กรอกรหัสสินค้าและชื่อสินค้า'); return; }
@@ -1274,6 +1279,18 @@
                 }
             };
 
+            const deleteProduct = async (p) => {
+                if (!confirm('ลบสินค้า "' + p.name + '" ใช่หรือไม่? การลบไม่สามารถย้อนกลับได้')) return;
+                try {
+                    const { error } = await client.from('products').delete().eq('id', p.id);
+                    if (error) throw error;
+                    flash('ลบสินค้าสำเร็จ', 'success');
+                    await loadData();
+                } catch (err) {
+                    flash('ลบไม่ได้ เนื่องจากสินค้านี้มีประวัติรับเข้า/สั่งซื้อ/LOT ผูกอยู่', 'error');
+                }
+            };
+
             return (
                 <div>
                     <h2>คลังสินค้า</h2>
@@ -1332,99 +1349,114 @@
                             <button onClick={addProduct}>บันทึกสินค้าใหม่</button>
                         </div>
                     )}
-                    <input type="text" placeholder="ค้นหา..." value={search} onChange={(e) => setSearch(e.target.value)} style={{marginBottom: '15px'}} />
-                    {filtered.map(p => {
-                        const ps = stock.filter(s => s.product_id === p.id);
-                        const tot = ps.reduce((s, x) => s + (parseFloat(x.quantity) || 0), 0);
-                        const isEditing = editId === p.id;
-                        return (
-                            <div key={p.id} className="card">
-                                {!isEditing && (
-                                    <div>
-                                        <div style={{display: 'flex', justifyContent: 'space-between'}}>
-                                            <div>
-                                                <strong>{p.product_code}</strong> - {p.name}
-                                                <div style={{fontSize: '12px', color: '#666', marginTop: '5px'}}>
-                                                    รวม: {tot.toFixed(0)} {p.unit} {p.price ? '· ราคา ' + p.price + ' บาท' : ''}
-                                                    {p.pack_unit && p.pack_size ? ' · หน่วยบรรจุ: ' + formatUnit(p) : ''}
-                                                </div>
-                                            </div>
-                                            <button className="small secondary" onClick={() => startEdit(p)}>แก้ไข</button>
-                                        </div>
-                                        <div className="loc-tags">
-                                            {ps.filter(s => parseFloat(s.quantity) > 0).map(s => {
-                                                const l = locations.find(x => x.id === s.location_id);
-                                                return (<span key={s.id} className="loc-tag">📍 {l ? l.name : '-'}: {s.quantity}</span>);
-                                            })}
-                                            {ps.filter(s => parseFloat(s.quantity) > 0).length === 0 && <span style={{fontSize: '11px', color: '#999'}}>ยังไม่มีสต็อก</span>}
-                                        </div>
-                                    </div>
-                                )}
-                                {isEditing && (
-                                    <div>
-                                        <div className="grid-3">
-                                            <div className="form-group">
-                                                <label>ชื่อ</label>
-                                                <input type="text" value={editVals.name} onChange={(e) => setEditVals({...editVals, name: e.target.value})} />
-                                            </div>
-                                            <div className="form-group">
-                                                <label>หน่วย</label>
-                                                <UnitInput value={editVals.unit} onChange={(v) => setEditVals({...editVals, unit: v})} options={BASE_UNITS} placeholder="-- เลือกหน่วย --" />
-                                            </div>
-                                            <div className="form-group">
-                                                <label>ราคา</label>
-                                                <input type="number" value={editVals.price} onChange={(e) => setEditVals({...editVals, price: e.target.value})} />
-                                            </div>
-                                        </div>
-                                        <div className="grid-2">
-                                            <div className="form-group">
-                                                <label>หน่วยที่รับจากผู้ผลิต (ถ้ามี)</label>
-                                                <UnitInput value={editVals.packUnit} onChange={(v) => setEditVals({...editVals, packUnit: v})} options={PACK_UNITS} placeholder="-- เลือกหน่วย --" />
-                                            </div>
-                                            <div className="form-group">
-                                                <label>จำนวนหน่วยต่อแพ็ค</label>
-                                                <input type="number" min="1" value={editVals.packSize} onChange={(e) => setEditVals({...editVals, packSize: e.target.value})} />
-                                            </div>
-                                        </div>
-                                        {isAdmin && (
-                                            <div className="grid-2">
-                                                <div className="form-group">
-                                                    <label>ราคาทุน</label>
-                                                    <input type="number" value={editVals.cost} onChange={(e) => setEditVals({...editVals, cost: e.target.value})} />
-                                                </div>
-                                                <div className="form-group">
-                                                    <label>ราคาส่ง</label>
-                                                    <input type="number" value={editVals.wholesalePrice} onChange={(e) => setEditVals({...editVals, wholesalePrice: e.target.value})} />
-                                                </div>
-                                            </div>
-                                        )}
-                                        {locations.map(l => (
-                                            <div key={l.id} style={{border: '1px solid var(--border)', borderRadius: '10px', padding: '10px', marginBottom: '10px'}}>
-                                                <div className="form-group" style={{marginBottom: '10px'}}>
-                                                    <label>จำนวนที่ 📍 {l.name}</label>
-                                                    <input type="number" value={editVals.qtyByLoc[l.id]} onChange={(e) => setEditVals({...editVals, qtyByLoc: {...editVals.qtyByLoc, [l.id]: e.target.value}})} />
-                                                </div>
-                                                <div className="grid-2">
-                                                    <div className="form-group">
-                                                        <label>LOT (ถ้าเพิ่มจำนวน)</label>
-                                                        <input type="text" value={editVals.lotByLoc[l.id]} onChange={(e) => setEditVals({...editVals, lotByLoc: {...editVals.lotByLoc, [l.id]: e.target.value}})} />
+                    <input type="text" placeholder="ค้นหา (ชื่อ/รหัส/บริษัท/หมวดหมู่)..." value={search} onChange={(e) => setSearch(e.target.value)} style={{marginBottom: '15px'}} />
+                    <div style={{overflowX: 'auto'}}>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>สินค้า</th><th>บริษัท</th><th>หมวดหมู่</th><th>คงเหลือรวม</th><th>หน่วย</th><th>ราคา</th><th>รายละเอียดสถานที่</th><th>จัดการ</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {filtered.map(p => {
+                                    const ps = stock.filter(s => s.product_id === p.id);
+                                    const tot = ps.reduce((s, x) => s + (parseFloat(x.quantity) || 0), 0);
+                                    const stockedLocs = ps.filter(s => parseFloat(s.quantity) > 0);
+                                    const isEditing = editId === p.id;
+                                    return (
+                                        <React.Fragment key={p.id}>
+                                            <tr>
+                                                <td><strong>{p.product_code}</strong><br />{p.name}{p.pack_unit && p.pack_size ? <div style={{fontSize: '11px', color: 'var(--text-muted)'}}>หน่วยบรรจุ: {formatUnit(p)}</div> : null}</td>
+                                                <td>{p.company || '-'}</td>
+                                                <td>{p.category ? <span className="badge badge-adj">{p.category}</span> : '-'}</td>
+                                                <td style={{fontWeight: 700, fontSize: '16px'}}>{tot.toFixed(0)}</td>
+                                                <td>{p.unit || '-'}</td>
+                                                <td>{p.price ? p.price + ' บาท' : '-'}</td>
+                                                <td>
+                                                    {stockedLocs.length === 0 && <span style={{fontSize: '11px', color: '#999'}}>ยังไม่มีสต็อก</span>}
+                                                    {stockedLocs.map(s => {
+                                                        const l = locations.find(x => x.id === s.location_id);
+                                                        return (<div key={s.id} style={{fontSize: '12px'}}>{l ? l.name : '-'}: <strong>{s.quantity}</strong></div>);
+                                                    })}
+                                                </td>
+                                                <td>
+                                                    <div className="row-actions">
+                                                        <button className="small" style={{background: '#17a2b8', color: 'white'}} onClick={() => startEdit(p)}>จำนวน</button>
+                                                        <button className="small secondary" onClick={() => startEdit(p)}>ราคา</button>
+                                                        <button className="small danger" onClick={() => deleteProduct(p)}>ลบ</button>
                                                     </div>
-                                                    <div className="form-group">
-                                                        <label>วันหมดอายุ (ถ้าเพิ่มจำนวน)</label>
-                                                        <input type="date" value={editVals.expiryByLoc[l.id]} onChange={(e) => setEditVals({...editVals, expiryByLoc: {...editVals.expiryByLoc, [l.id]: e.target.value}})} />
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        ))}
-                                        <div className="row-actions">
-                                            <button onClick={() => saveEdit(p)}>บันทึก</button>
-                                            <button className="secondary" onClick={cancelEdit}>ยกเลิก</button>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        );
-                    })}
+                                                </td>
+                                            </tr>
+                                            {isEditing && (
+                                                <tr>
+                                                    <td colSpan="8">
+                                                        <div className="grid-3">
+                                                            <div className="form-group">
+                                                                <label>ชื่อ</label>
+                                                                <input type="text" value={editVals.name} onChange={(e) => setEditVals({...editVals, name: e.target.value})} />
+                                                            </div>
+                                                            <div className="form-group">
+                                                                <label>หน่วย</label>
+                                                                <UnitInput value={editVals.unit} onChange={(v) => setEditVals({...editVals, unit: v})} options={BASE_UNITS} placeholder="-- เลือกหน่วย --" />
+                                                            </div>
+                                                            <div className="form-group">
+                                                                <label>ราคา</label>
+                                                                <input type="number" value={editVals.price} onChange={(e) => setEditVals({...editVals, price: e.target.value})} />
+                                                            </div>
+                                                        </div>
+                                                        <div className="grid-2">
+                                                            <div className="form-group">
+                                                                <label>หน่วยที่รับจากผู้ผลิต (ถ้ามี)</label>
+                                                                <UnitInput value={editVals.packUnit} onChange={(v) => setEditVals({...editVals, packUnit: v})} options={PACK_UNITS} placeholder="-- เลือกหน่วย --" />
+                                                            </div>
+                                                            <div className="form-group">
+                                                                <label>จำนวนหน่วยต่อแพ็ค</label>
+                                                                <input type="number" min="1" value={editVals.packSize} onChange={(e) => setEditVals({...editVals, packSize: e.target.value})} />
+                                                            </div>
+                                                        </div>
+                                                        {isAdmin && (
+                                                            <div className="grid-2">
+                                                                <div className="form-group">
+                                                                    <label>ราคาทุน</label>
+                                                                    <input type="number" value={editVals.cost} onChange={(e) => setEditVals({...editVals, cost: e.target.value})} />
+                                                                </div>
+                                                                <div className="form-group">
+                                                                    <label>ราคาส่ง</label>
+                                                                    <input type="number" value={editVals.wholesalePrice} onChange={(e) => setEditVals({...editVals, wholesalePrice: e.target.value})} />
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                        {locations.map(l => (
+                                                            <div key={l.id} style={{border: '1px solid var(--border)', borderRadius: '10px', padding: '10px', marginBottom: '10px'}}>
+                                                                <div className="form-group" style={{marginBottom: '10px'}}>
+                                                                    <label>จำนวนที่ 📍 {l.name}</label>
+                                                                    <input type="number" value={editVals.qtyByLoc[l.id]} onChange={(e) => setEditVals({...editVals, qtyByLoc: {...editVals.qtyByLoc, [l.id]: e.target.value}})} />
+                                                                </div>
+                                                                <div className="grid-2">
+                                                                    <div className="form-group">
+                                                                        <label>LOT (ถ้าเพิ่มจำนวน)</label>
+                                                                        <input type="text" value={editVals.lotByLoc[l.id]} onChange={(e) => setEditVals({...editVals, lotByLoc: {...editVals.lotByLoc, [l.id]: e.target.value}})} />
+                                                                    </div>
+                                                                    <div className="form-group">
+                                                                        <label>วันหมดอายุ (ถ้าเพิ่มจำนวน)</label>
+                                                                        <input type="date" value={editVals.expiryByLoc[l.id]} onChange={(e) => setEditVals({...editVals, expiryByLoc: {...editVals.expiryByLoc, [l.id]: e.target.value}})} />
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                        <div className="row-actions">
+                                                            <button onClick={() => saveEdit(p)}>บันทึก</button>
+                                                            <button className="secondary" onClick={cancelEdit}>ยกเลิก</button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            )}
+                                        </React.Fragment>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             );
         }
