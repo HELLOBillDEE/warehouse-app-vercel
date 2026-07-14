@@ -1185,16 +1185,20 @@
 
         function Warehouse({ products, locations, stock, loadData, msg, msgType, flash, staffName, isAdmin }) {
             const [search, setSearch] = useState('');
+            const [locFilter, setLocFilter] = useState('');
             const [editId, setEditId] = useState(null);
             const [editVals, setEditVals] = useState({});
             const [showAdd, setShowAdd] = useState(false);
             const [newProd, setNewProd] = useState({ code: '', name: '', unit: '', price: '', cost: '', wholesalePrice: '', category: '', packUnit: '', packSize: '' });
-            const filtered = products.filter(p =>
+            const matchesSearch = (p) =>
                 p.product_code?.includes(search.toUpperCase()) ||
                 p.name?.includes(search) ||
                 p.company?.includes(search) ||
-                p.category?.includes(search)
-            ).slice(0, 50);
+                p.category?.includes(search);
+            const filtered = (locFilter
+                ? products.filter(p => stock.some(s => s.product_id === p.id && s.location_id === locFilter && parseFloat(s.quantity) > 0))
+                : products
+            ).filter(matchesSearch).slice(0, 50);
 
             const addProduct = async () => {
                 if (!newProd.code.trim() || !newProd.name.trim()) { flash('กรอกรหัสสินค้าและชื่อสินค้า'); return; }
@@ -1349,17 +1353,23 @@
                             <button onClick={addProduct}>บันทึกสินค้าใหม่</button>
                         </div>
                     )}
-                    <input type="text" placeholder="ค้นหา (ชื่อ/รหัส/บริษัท/หมวดหมู่)..." value={search} onChange={(e) => setSearch(e.target.value)} style={{marginBottom: '15px'}} />
+                    <div className="grid-2" style={{marginBottom: '15px'}}>
+                        <input type="text" placeholder="ค้นหา (ชื่อ/รหัส/บริษัท/หมวดหมู่)..." value={search} onChange={(e) => setSearch(e.target.value)} />
+                        <select value={locFilter} onChange={(e) => setLocFilter(e.target.value)}>
+                            <option value="">ทุกสถานที่</option>
+                            {locations.map(l => (<option key={l.id} value={l.id}>{l.name}</option>))}
+                        </select>
+                    </div>
                     <div style={{overflowX: 'auto'}}>
                         <table>
                             <thead>
                                 <tr>
-                                    <th>สินค้า</th><th>บริษัท</th><th>หมวดหมู่</th><th>คงเหลือรวม</th><th>หน่วย</th><th>ราคา</th><th>รายละเอียดสถานที่</th><th>จัดการ</th>
+                                    <th>สินค้า</th><th>บริษัท</th><th>หมวดหมู่</th><th>{locFilter ? 'คงเหลือ' : 'คงเหลือรวม'}</th><th>หน่วย</th><th>ราคา</th><th>รายละเอียดสถานที่</th><th>จัดการ</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {filtered.map(p => {
-                                    const ps = stock.filter(s => s.product_id === p.id);
+                                    const ps = stock.filter(s => s.product_id === p.id && (!locFilter || s.location_id === locFilter));
                                     const tot = ps.reduce((s, x) => s + (parseFloat(x.quantity) || 0), 0);
                                     const stockedLocs = ps.filter(s => parseFloat(s.quantity) > 0);
                                     const isEditing = editId === p.id;
