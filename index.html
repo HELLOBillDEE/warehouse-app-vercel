@@ -835,7 +835,8 @@
             const [pid, setPid] = useState('');
             const [pLabel, setPLabel] = useState('');
             const [lid, setLid] = useState('');
-            const [qty, setQty] = useState('');
+            const [packQty, setPackQty] = useState('');
+            const [subQty, setSubQty] = useState('');
             const [issueType, setIssueType] = useState('sale');
             const [notes, setNotes] = useState('');
             const [search, setSearch] = useState('');
@@ -843,10 +844,13 @@
             const selectedProduct = products.find(p => p.id === pid);
             const availableLocs = stock.filter(s => s.product_id === pid && parseFloat(s.quantity) > 0);
             const current = stock.find(x => x.product_id === pid && x.location_id === lid);
+            const hasPack = !!(selectedProduct?.pack_unit && parseFloat(selectedProduct?.pack_size) > 1);
+            const packSize = hasPack ? parseFloat(selectedProduct.pack_size) : 1;
+            const qty = hasPack ? (parseFloat(packQty) || 0) * packSize + (parseFloat(subQty) || 0) : (parseFloat(subQty) || 0);
 
             const handle = async () => {
-                if (!pid || !lid || !qty || parseFloat(qty) <= 0) { flash('กรอกข้อมูลให้ครบและจำนวนต้องมากกว่า 0'); return; }
-                const q = parseFloat(qty);
+                if (!pid || !lid || !qty || qty <= 0) { flash('กรอกข้อมูลให้ครบและจำนวนต้องมากกว่า 0'); return; }
+                const q = qty;
                 const s = stock.find(x => x.product_id === pid && x.location_id === lid);
                 const avail = s ? parseFloat(s.quantity) : 0;
                 if (q > avail) { flash('สต็อกไม่พอ (คงเหลือ ' + avail + ')'); return; }
@@ -854,7 +858,7 @@
                     await client.from('product_location_stock').update({ quantity: avail - q, updated_at: new Date().toISOString() }).eq('id', s.id);
                     await client.from('stock_movements').insert([{ product_id: pid, location_id: lid, quantity_change: -q, movement_type: issueType, notes, staff_name: staffName }]);
                     flash('บันทึกเบิกออกสำเร็จ', 'success');
-                    setPid(''); setPLabel(''); setLid(''); setQty(''); setSearch(''); setNotes('');
+                    setPid(''); setPLabel(''); setLid(''); setPackQty(''); setSubQty(''); setSearch(''); setNotes('');
                     await loadData();
                 } catch (err) {
                     flash('Error: ' + err.message, 'error');
@@ -868,14 +872,14 @@
                     <div className="grid-2">
                         <div className="form-group">
                             <label>ค้นหาสินค้า</label>
-                            <input type="text" placeholder="รหัส/ชื่อ" value={pLabel || search} onChange={(e) => { setSearch(e.target.value); setPLabel(''); setPid(''); setLid(''); }} />
+                            <input type="text" placeholder="รหัส/ชื่อ" value={pLabel || search} onChange={(e) => { setSearch(e.target.value); setPLabel(''); setPid(''); setLid(''); setPackQty(''); setSubQty(''); }} />
                             {search && !pid && (<div className="search-results">
-                                {filtered.map(p => (<div key={p.id} className="search-result-item" onClick={() => { setPid(p.id); setPLabel(p.product_code + ' - ' + p.name); setSearch(''); }}>{p.product_code} - {p.name} {formatUnit(p) ? '(' + formatUnit(p) + ')' : ''}</div>))}
+                                {filtered.map(p => (<div key={p.id} className="search-result-item" onClick={() => { setPid(p.id); setPLabel(p.product_code + ' - ' + p.name); setSearch(''); setLid(''); setPackQty(''); setSubQty(''); }}>{p.product_code} - {p.name} {formatUnit(p) ? '(' + formatUnit(p) + ')' : ''}</div>))}
                             </div>)}
                         </div>
                         <div className="form-group">
                             <label>ที่อยู่คลัง (มีสต็อก)</label>
-                            <select value={lid} onChange={(e) => setLid(e.target.value)} disabled={!pid}>
+                            <select value={lid} onChange={(e) => { setLid(e.target.value); setPackQty(''); setSubQty(''); }} disabled={!pid}>
                                 <option value="">-- เลือก --</option>
                                 {availableLocs.map(s => {
                                     const l = locations.find(x => x.id === s.location_id);
@@ -885,10 +889,23 @@
                         </div>
                     </div>
                     <div className="grid-3">
-                        <div className="form-group">
-                            <label>จำนวน{current ? ' (คงเหลือ ' + current.quantity + ' ' + (selectedProduct?.unit || '') + ')' : ''}</label>
-                            <input type="number" min="1" value={qty} onChange={(e) => setQty(e.target.value)} />
-                        </div>
+                        {hasPack ? (
+                            <>
+                                <div className="form-group">
+                                    <label>จำนวน ({selectedProduct.pack_unit})</label>
+                                    <input type="number" min="0" value={packQty} onChange={(e) => setPackQty(e.target.value)} />
+                                </div>
+                                <div className="form-group">
+                                    <label>จำนวนเศษ ({selectedProduct.unit || 'หน่วยย่อย'})</label>
+                                    <input type="number" min="0" value={subQty} onChange={(e) => setSubQty(e.target.value)} />
+                                </div>
+                            </>
+                        ) : (
+                            <div className="form-group">
+                                <label>จำนวน{current ? ' (คงเหลือ ' + current.quantity + ' ' + (selectedProduct?.unit || '') + ')' : ''}</label>
+                                <input type="number" min="0" value={subQty} onChange={(e) => setSubQty(e.target.value)} />
+                            </div>
+                        )}
                         <div className="form-group">
                             <label>ประเภทการเบิก</label>
                             <select value={issueType} onChange={(e) => setIssueType(e.target.value)}>
@@ -901,6 +918,11 @@
                             <input type="text" value={notes} onChange={(e) => setNotes(e.target.value)} />
                         </div>
                     </div>
+                    {hasPack && (packQty || subQty) && (
+                        <div style={{fontSize: '13px', color: 'var(--text-muted)', marginBottom: '12px'}}>
+                            = {qty} {selectedProduct.unit || ''} ({packQty || 0} {selectedProduct.pack_unit} × {packSize}{subQty ? ' + ' + subQty : ''}){current ? ' · คงเหลือ ' + current.quantity + ' ' + (selectedProduct.unit || '') : ''}
+                        </div>
+                    )}
                     <button onClick={handle}>บันทึกเบิกออก</button>
                 </div>
             );
