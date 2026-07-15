@@ -2533,11 +2533,11 @@
             return (
                 <div className="container">
                     <div className="mobile-topbar">
+                        <button className="hamburger-btn" onClick={() => setMenuOpen(true)}>☰</button>
                         <div style={{display: 'flex', alignItems: 'center', gap: 8}}>
                             <div className="logo-badge" style={{width: 32, height: 32}}><IconLogo /></div>
                             <strong style={{fontSize: 14}}>ระบบจัดการคลังสินค้า</strong>
                         </div>
-                        <button className="hamburger-btn" onClick={() => setMenuOpen(true)}>☰</button>
                     </div>
                     <div className={'sidebar-overlay' + (menuOpen ? ' open' : '')} onClick={() => setMenuOpen(false)}></div>
                     <div className={'sidebar' + (menuOpen ? ' open' : '')}>
