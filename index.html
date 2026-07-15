@@ -87,13 +87,21 @@
         .nav-tab:hover { color: var(--text); background: var(--border); }
         .nav-tab.active { background: var(--card); color: var(--primary); font-weight: 600; box-shadow: 0 2px 8px rgba(30,34,51,0.08); }
         .nav-tab svg { flex-shrink: 0; }
+        .mobile-menu-toggle { display: none; }
         @media (max-width: 760px) {
             .container { flex-direction: column; }
             .sidebar {
                 width: 100%; border-right: none; border-bottom: 1px solid var(--border);
                 border-radius: 20px 20px 0 0; position: static; max-height: none;
             }
-            .nav-tabs { flex-direction: row; flex-wrap: wrap; gap: 4px; }
+            .mobile-menu-toggle {
+                display: flex; align-items: center; gap: 8px; width: 100%;
+                padding: 10px 12px; margin-bottom: 8px; background: var(--border); border: none;
+                border-radius: 10px; font-size: 14px; font-weight: 600; color: var(--text);
+                font-family: inherit; cursor: pointer;
+            }
+            .nav-tabs { display: none; flex-direction: row; flex-wrap: wrap; gap: 4px; }
+            .nav-tabs.open { display: flex; }
             .nav-tab { width: auto; padding: 6px 9px; font-size: 12px; gap: 5px; }
             .nav-tab svg { width: 15px; height: 15px; }
             .main-content { padding: 22px 18px; }
@@ -2431,6 +2439,8 @@
                 try { return JSON.parse(sessionStorage.getItem('warehouse_staff')); } catch { return null; }
             });
             const [tab, setTab] = useState('home');
+            const [menuOpen, setMenuOpen] = useState(false);
+            const selectTab = (id) => { setTab(id); setMsg(''); setMenuOpen(false); };
             const [products, setProducts] = useState([]);
             const [locations, setLocations] = useState([]);
             const [stock, setStock] = useState([]);
@@ -2514,19 +2524,23 @@
                                 <div className="app-subtitle">บริหารสต็อกแบบเรียลไทม์</div>
                             </div>
                         </div>
-                        <div className="nav-tabs">
-                            <button className={'nav-tab ' + (tab === 'home' ? 'active' : '')} onClick={() => { setTab('home'); setMsg(''); }}><IconHome />หน้าแรก</button>
-                            <button className={'nav-tab ' + (tab === 'po' ? 'active' : '')} onClick={() => { setTab('po'); setMsg(''); }}><IconCart />สั่งซื้อ</button>
-                            <button className={'nav-tab ' + (tab === 'receiving' ? 'active' : '')} onClick={() => { setTab('receiving'); setMsg(''); }}><IconIn />รับเข้า</button>
-                            <button className={'nav-tab ' + (tab === 'issue' ? 'active' : '')} onClick={() => { setTab('issue'); setMsg(''); }}><IconOut />เบิกออก</button>
-                            <button className={'nav-tab ' + (tab === 'warehouse' ? 'active' : '')} onClick={() => { setTab('warehouse'); setMsg(''); }}><IconBox />คลังสินค้า</button>
-                            <button className={'nav-tab ' + (tab === 'transfer' ? 'active' : '')} onClick={() => { setTab('transfer'); setMsg(''); }}><IconSwap />ย้ายคลัง</button>
-                            <button className={'nav-tab ' + (tab === 'expiry' ? 'active' : '')} onClick={() => { setTab('expiry'); setMsg(''); }}><IconAlert />ใกล้หมดอายุ{soonCount > 0 ? ' (' + soonCount + ')' : ''}</button>
-                            <button className={'nav-tab ' + (tab === 'history' ? 'active' : '')} onClick={() => { setTab('history'); setMsg(''); }}><IconHistory />ประวัติ</button>
-                            <button className={'nav-tab ' + (tab === 'locations' ? 'active' : '')} onClick={() => { setTab('locations'); setMsg(''); }}><IconPin />ที่อยู่</button>
-                            <button className={'nav-tab ' + (tab === 'suppliers' ? 'active' : '')} onClick={() => { setTab('suppliers'); setMsg(''); }}><IconTruck />ผู้ผลิต</button>
-                            {currentStaff.is_admin && <button className={'nav-tab ' + (tab === 'stats' ? 'active' : '')} onClick={() => { setTab('stats'); setMsg(''); }}><IconChart />สถิติสั่งซื้อ</button>}
-                            {currentStaff.is_admin && <button className={'nav-tab ' + (tab === 'staff' ? 'active' : '')} onClick={() => { setTab('staff'); setMsg(''); }}><IconUser />พนักงาน</button>}
+                        <button className="mobile-menu-toggle" onClick={() => setMenuOpen(!menuOpen)}>
+                            <span>☰ เมนู</span>
+                            <span style={{marginLeft: 'auto', fontSize: '12px', color: 'var(--text-muted)'}}>{menuOpen ? 'ปิด' : 'เปิด'}</span>
+                        </button>
+                        <div className={'nav-tabs' + (menuOpen ? ' open' : '')}>
+                            <button className={'nav-tab ' + (tab === 'home' ? 'active' : '')} onClick={() => selectTab('home')}><IconHome />หน้าแรก</button>
+                            <button className={'nav-tab ' + (tab === 'po' ? 'active' : '')} onClick={() => selectTab('po')}><IconCart />สั่งซื้อ</button>
+                            <button className={'nav-tab ' + (tab === 'receiving' ? 'active' : '')} onClick={() => selectTab('receiving')}><IconIn />รับเข้า</button>
+                            <button className={'nav-tab ' + (tab === 'issue' ? 'active' : '')} onClick={() => selectTab('issue')}><IconOut />เบิกออก</button>
+                            <button className={'nav-tab ' + (tab === 'warehouse' ? 'active' : '')} onClick={() => selectTab('warehouse')}><IconBox />คลังสินค้า</button>
+                            <button className={'nav-tab ' + (tab === 'transfer' ? 'active' : '')} onClick={() => selectTab('transfer')}><IconSwap />ย้ายคลัง</button>
+                            <button className={'nav-tab ' + (tab === 'expiry' ? 'active' : '')} onClick={() => selectTab('expiry')}><IconAlert />ใกล้หมดอายุ{soonCount > 0 ? ' (' + soonCount + ')' : ''}</button>
+                            <button className={'nav-tab ' + (tab === 'history' ? 'active' : '')} onClick={() => selectTab('history')}><IconHistory />ประวัติ</button>
+                            <button className={'nav-tab ' + (tab === 'locations' ? 'active' : '')} onClick={() => selectTab('locations')}><IconPin />ที่อยู่</button>
+                            <button className={'nav-tab ' + (tab === 'suppliers' ? 'active' : '')} onClick={() => selectTab('suppliers')}><IconTruck />ผู้ผลิต</button>
+                            {currentStaff.is_admin && <button className={'nav-tab ' + (tab === 'stats' ? 'active' : '')} onClick={() => selectTab('stats')}><IconChart />สถิติสั่งซื้อ</button>}
+                            {currentStaff.is_admin && <button className={'nav-tab ' + (tab === 'staff' ? 'active' : '')} onClick={() => selectTab('staff')}><IconUser />พนักงาน</button>}
                         </div>
                         <div style={{marginTop: 'auto', paddingTop: '16px', borderTop: '1px solid var(--border)'}}>
                             <div style={{fontSize: '12px', color: 'var(--text-muted)', marginBottom: '8px', padding: '0 6px'}}>เข้าสู่ระบบ: <strong style={{color: 'var(--text)'}}>{currentStaff.name}</strong></div>
