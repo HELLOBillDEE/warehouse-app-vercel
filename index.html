@@ -1405,7 +1405,7 @@
             const [showAdd, setShowAdd] = useState(false);
             const [displayLimit, setDisplayLimit] = useState(50);
             const [newProd, setNewProd] = useState({ code: '', name: '', unit: '', price: '', cost: '', wholesalePrice: '', category: '', company: '', packUnit: '', packSize: '', activeIngredient: '', usageInfo: '', restrictions: '' });
-            const companyOptions = [...new Set(products.map(p => p.company).filter(Boolean))].sort();
+            const companyOptions = [...new Set(suppliers.map(s => s.name).filter(Boolean))].sort();
             const matchesSearch = (p) =>
                 p.product_code?.includes(search.toUpperCase()) ||
                 p.name?.includes(search) ||
