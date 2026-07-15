@@ -2515,11 +2515,11 @@
                         </div>
                         <div className="nav-tabs">
                             <button className={'nav-tab ' + (tab === 'home' ? 'active' : '')} onClick={() => { setTab('home'); setMsg(''); }}><IconHome />หน้าแรก</button>
+                            <button className={'nav-tab ' + (tab === 'po' ? 'active' : '')} onClick={() => { setTab('po'); setMsg(''); }}><IconCart />สั่งซื้อ</button>
                             <button className={'nav-tab ' + (tab === 'receiving' ? 'active' : '')} onClick={() => { setTab('receiving'); setMsg(''); }}><IconIn />รับเข้า</button>
                             <button className={'nav-tab ' + (tab === 'issue' ? 'active' : '')} onClick={() => { setTab('issue'); setMsg(''); }}><IconOut />เบิกออก</button>
                             <button className={'nav-tab ' + (tab === 'warehouse' ? 'active' : '')} onClick={() => { setTab('warehouse'); setMsg(''); }}><IconBox />คลังสินค้า</button>
                             <button className={'nav-tab ' + (tab === 'transfer' ? 'active' : '')} onClick={() => { setTab('transfer'); setMsg(''); }}><IconSwap />ย้ายคลัง</button>
-                            <button className={'nav-tab ' + (tab === 'po' ? 'active' : '')} onClick={() => { setTab('po'); setMsg(''); }}><IconCart />สั่งซื้อ</button>
                             <button className={'nav-tab ' + (tab === 'expiry' ? 'active' : '')} onClick={() => { setTab('expiry'); setMsg(''); }}><IconAlert />ใกล้หมดอายุ{soonCount > 0 ? ' (' + soonCount + ')' : ''}</button>
                             <button className={'nav-tab ' + (tab === 'history' ? 'active' : '')} onClick={() => { setTab('history'); setMsg(''); }}><IconHistory />ประวัติ</button>
                             <button className={'nav-tab ' + (tab === 'locations' ? 'active' : '')} onClick={() => { setTab('locations'); setMsg(''); }}><IconPin />ที่อยู่</button>
