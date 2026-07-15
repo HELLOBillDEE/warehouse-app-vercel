@@ -952,6 +952,7 @@
             const [cost, setCost] = useState('');
             const [costLoading, setCostLoading] = useState(false);
             const [itemFormKey, setItemFormKey] = useState(0);
+            const [editingIdx, setEditingIdx] = useState(null);
 
             const filtered = products.filter(p => p.product_code?.includes(search.toUpperCase()) || p.name?.includes(search)).slice(0, 20);
             const selectedProduct = products.find(p => p.id === pid);
@@ -982,16 +983,29 @@
 
             useEffect(() => {
                 if (!pid) { setCost(''); setBaseUnit(''); return; }
+                if (editingIdx !== null) return;
                 setBaseUnit(selectedProduct?.unit || '');
                 if (selectedProduct?.pack_unit) setPackUnit(selectedProduct.pack_unit);
                 if (selectedProduct?.pack_size) setPackSize(String(selectedProduct.pack_size));
                 setCostLoading(true);
                 (async () => {
-                    const { data } = await client.from('purchase_receipt_items').select('cost_per_base_unit, created_at').eq('product_id', pid).not('cost_per_base_unit', 'is', null).order('created_at', { ascending: false }).limit(1);
-                    if (data && data[0]) {
-                        setCost(String(data[0].cost_per_base_unit));
+                    const [{ data: receiptData }, { data: poData }] = await Promise.all([
+                        client.from('purchase_receipt_items').select('cost_per_base_unit, pack_unit, pack_size, created_at').eq('product_id', pid).order('created_at', { ascending: false }).limit(5),
+                        client.from('purchase_order_items').select('unit_cost, unit, pack_size, created_at').eq('product_id', pid).order('created_at', { ascending: false }).limit(5)
+                    ]);
+                    const combined = [
+                        ...(receiptData || []).map(d => ({ cost: d.cost_per_base_unit, packUnit: d.pack_unit, packSize: d.pack_size, created_at: d.created_at })),
+                        ...(poData || []).map(d => ({ cost: d.unit_cost, packUnit: d.unit, packSize: d.pack_size, created_at: d.created_at }))
+                    ].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+                    const withCost = combined.find(d => d.cost != null);
+                    if (withCost) {
+                        setCost(String(withCost.cost));
                     } else {
                         setCost(selectedProduct?.cost != null ? String(selectedProduct.cost) : '');
+                    }
+                    if (!selectedProduct?.pack_unit) {
+                        const withPack = combined.find(d => d.packUnit && parseFloat(d.packSize) > 1);
+                        if (withPack) { setPackUnit(withPack.packUnit); setPackSize(String(withPack.packSize || 1)); }
                     }
                     setCostLoading(false);
                 })();
@@ -999,12 +1013,36 @@
 
             const addItem = () => {
                 if (!pid || !packQty || parseFloat(packQty) <= 0) { flash('เลือกสินค้าและกรอกจำนวนให้ครบ'); return; }
-                setItems([...items, { productId: pid, productLabel: pLabel, packUnit, packSize: parseFloat(packSize) || 1, packQty: parseFloat(packQty), baseUnit, unitCost: cost }]);
+                const newItem = { productId: pid, productLabel: pLabel, packUnit, packSize: parseFloat(packSize) || 1, packQty: parseFloat(packQty), baseUnit, unitCost: cost };
+                if (editingIdx !== null) {
+                    setItems(items.map((it, i) => i === editingIdx ? newItem : it));
+                    setEditingIdx(null);
+                } else {
+                    setItems([...items, newItem]);
+                }
                 setItemFormKey(k => k + 1);
                 setPid(''); setPLabel(''); setSearch(''); setPackUnit(''); setPackSize('1'); setPackQty(''); setBaseUnit(''); setCost('');
             };
 
-            const removeItem = (idx) => setItems(items.filter((_, i) => i !== idx));
+            const removeItem = (idx) => {
+                setItems(items.filter((_, i) => i !== idx));
+                if (editingIdx === idx) cancelEditItem();
+            };
+
+            const startEditItem = (idx) => {
+                const it = items[idx];
+                setPid(it.productId); setPLabel(it.productLabel); setSearch('');
+                setPackUnit(it.packUnit || ''); setPackSize(String(it.packSize || 1)); setPackQty(String(it.packQty || ''));
+                setBaseUnit(it.baseUnit || ''); setCost(String(it.unitCost ?? ''));
+                setItemFormKey(k => k + 1);
+                setEditingIdx(idx);
+            };
+
+            const cancelEditItem = () => {
+                setEditingIdx(null);
+                setPid(''); setPLabel(''); setSearch(''); setPackUnit(''); setPackSize('1'); setPackQty(''); setBaseUnit(''); setCost('');
+                setItemFormKey(k => k + 1);
+            };
 
             const total = items.reduce((sum, it) => sum + (parseFloat(it.packQty) || 0) * (parseFloat(it.packSize) || 1) * (parseFloat(it.unitCost) || 0), 0);
 
@@ -1070,11 +1108,11 @@
                         <input type="text" value={notes} onChange={(e) => setNotes(e.target.value)} />
                     </div>
 
-                    <h3 style={{marginBottom: '10px'}}>เพิ่มรายการสินค้า</h3>
+                    <h3 style={{marginBottom: '10px'}}>{editingIdx !== null ? 'แก้ไขรายการสินค้า' : 'เพิ่มรายการสินค้า'}</h3>
                     <div style={{border: '1.5px solid var(--primary)', borderRadius: '10px', padding: '12px', marginBottom: '15px'}}>
                         <div className="form-group">
                             <label>ค้นหาสินค้า (ชื่อ/รหัส)</label>
-                            <input type="text" placeholder="พิมพ์ชื่อสินค้าหรือรหัส..." value={pLabel || search} onChange={(e) => { setSearch(e.target.value); setPLabel(''); setPid(''); }} />
+                            <input type="text" placeholder="พิมพ์ชื่อสินค้าหรือรหัส..." value={pLabel || search} onChange={(e) => { setSearch(e.target.value); setPLabel(''); setPid(''); }} disabled={editingIdx !== null} />
                             {search && !pid && (<div className="search-results">
                                 {filtered.map(p => (<div key={p.id} className="search-result-item" onClick={() => { setPid(p.id); setPLabel(p.product_code + ' - ' + p.name); setSearch(''); }}>{p.product_code} - {p.name} {formatUnit(p) ? '(' + formatUnit(p) + ')' : ''}</div>))}
                             </div>)}
@@ -1108,14 +1146,17 @@
                                 = {(parseFloat(packQty) * parseFloat(packSize)).toFixed(0)} {baseUnit || 'หน่วย'}
                             </div>
                         )}
-                        <button className="secondary" onClick={addItem}>+ เพิ่มรายการ</button>
+                        <div className="row-actions">
+                            <button className="secondary" onClick={addItem}>{editingIdx !== null ? 'บันทึกการแก้ไข' : '+ เพิ่มรายการ'}</button>
+                            {editingIdx !== null && <button className="secondary" onClick={cancelEditItem}>ยกเลิกแก้ไข</button>}
+                        </div>
                     </div>
 
                     <h3 style={{marginBottom: '10px'}}>รายการที่เพิ่มแล้ว ({items.length})</h3>
                     {items.map((it, i) => {
                         const totalBase = (parseFloat(it.packQty) || 0) * (parseFloat(it.packSize) || 1);
                         return (
-                        <div key={i} style={{border: '1px solid var(--border)', borderRadius: '10px', padding: '10px', marginBottom: '10px'}}>
+                        <div key={i} style={{border: (editingIdx === i ? '1.5px solid var(--primary)' : '1px solid var(--border)'), borderRadius: '10px', padding: '10px', marginBottom: '10px'}}>
                             <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'start'}}>
                                 <div>
                                     <strong>{it.productLabel}</strong>
@@ -1126,7 +1167,10 @@
                                         ต้นทุน {it.unitCost || 0} บาท/{it.baseUnit || 'หน่วย'} = รวม {(totalBase * (parseFloat(it.unitCost) || 0)).toFixed(2)} บาท
                                     </div>
                                 </div>
-                                <button className="small danger" onClick={() => removeItem(i)}>ลบ</button>
+                                <div className="row-actions" style={{margin: 0}}>
+                                    <button className="small secondary" onClick={() => startEditItem(i)}>แก้ไข</button>
+                                    <button className="small danger" onClick={() => removeItem(i)}>ลบ</button>
+                                </div>
                             </div>
                         </div>
                         );
