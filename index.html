@@ -237,6 +237,7 @@
         const IconCart = () => (<svg {...iconProps}><path d="M4 5h2l2 11h10l2-8H7" /><circle cx="10" cy="19" r="1.3" fill="currentColor" stroke="none" /><circle cx="17" cy="19" r="1.3" fill="currentColor" stroke="none" /></svg>);
         const IconTruck = () => (<svg {...iconProps}><rect x="2.5" y="7.5" width="11" height="9" rx="1.5" /><path d="M13.5 10.5h4l3 3.5v2.5h-7z" /><circle cx="7" cy="18.5" r="1.6" /><circle cx="16.5" cy="18.5" r="1.6" /></svg>);
         const IconChart = () => (<svg {...iconProps}><path d="M4 20V10M12 20V4M20 20v-7" /><path d="M2.5 20h19" /></svg>);
+        const IconFlask = () => (<svg {...iconProps}><path d="M9.5 3.5h5M10 4v5.5l-5 9a2 2 0 001.8 3h10.4a2 2 0 001.8-3l-5-9V4" /><path d="M7.5 15.5h9" /></svg>);
         const IconLogo = () => (<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="white" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3.5l8 4v9l-8 4-8-4v-9l8-4z" /><path d="M4 7.5l8 4 8-4M12 11.5v9" /></svg>);
 
         function Home({ products, locations, stock, movements }) {
@@ -2494,6 +2495,70 @@
             );
         }
 
+        function ChemicalCheck({ products }) {
+            const [search, setSearch] = useState('');
+            const [expanded, setExpanded] = useState({});
+
+            const eligible = products.filter(p => p.active_ingredient || p.usage_info || p.restrictions);
+            const q = search.trim();
+            const filtered = eligible.filter(p =>
+                !q ||
+                p.name?.includes(q) ||
+                p.product_code?.includes(q.toUpperCase()) ||
+                p.active_ingredient?.includes(q) ||
+                p.usage_info?.includes(q)
+            );
+
+            return (
+                <div>
+                    <h2>ตรวจยา</h2>
+                    <div style={{color: 'var(--text-muted)', fontSize: '13px', marginBottom: '14px'}}>
+                        แสดงเฉพาะสินค้าที่มีข้อมูลสารเคมี/สรรพคุณ/ข้อจำกัดการใช้ — ใช้ค้นหายาที่ใช้สารตัวเดียวกันเพื่อหาสินค้าทดแทน
+                    </div>
+                    <input type="text" placeholder="ค้นหา (ชื่อ/รหัส/ชื่อทางการ/สรรพคุณ)..." value={search} onChange={(e) => setSearch(e.target.value)} style={{marginBottom: '16px', maxWidth: '420px'}} />
+                    <div style={{overflowX: 'auto'}}>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>สินค้า</th>
+                                    <th>ชื่อทางการ (สารเคมี/สารออกฤทธิ์)</th>
+                                    <th>สรรพคุณ / ใช้รักษา-กำจัดอะไร</th>
+                                    <th>ข้อจำกัดการใช้</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {filtered.map(p => (
+                                    <tr key={p.id}>
+                                        <td><strong>{p.product_code}</strong><br />{p.name}{p.company ? <div style={{fontSize: '11px', color: 'var(--text-muted)'}}>{p.company}</div> : null}</td>
+                                        <td>
+                                            {p.active_ingredient ? <span className="badge" style={{background: '#e1f0ff', color: '#0b5394'}}>🧪 {p.active_ingredient}</span> : '-'}
+                                        </td>
+                                        <td style={{maxWidth: '280px'}}>
+                                            {p.usage_info ? (
+                                                expanded[p.id] || p.usage_info.length <= 80 ? (
+                                                    <span style={{whiteSpace: 'pre-line'}}>{p.usage_info}</span>
+                                                ) : (
+                                                    <span>
+                                                        {p.usage_info.slice(0, 80)}...{' '}
+                                                        <span style={{color: 'var(--primary)', cursor: 'pointer', fontSize: '12px'}} onClick={() => setExpanded({...expanded, [p.id]: true})}>ดูเพิ่มเติม</span>
+                                                    </span>
+                                                )
+                                            ) : '-'}
+                                        </td>
+                                        <td style={{maxWidth: '220px'}}>
+                                            {p.restrictions ? <span style={{color: '#c0392b', whiteSpace: 'pre-line'}}>⚠️ {p.restrictions}</span> : '-'}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                    {filtered.length === 0 && <div style={{color: 'var(--text-muted)', marginTop: '15px'}}>ไม่พบสินค้าที่มีข้อมูลตรงกับคำค้นหา</div>}
+                    <div style={{color: 'var(--text-muted)', fontSize: '12px', marginTop: '10px'}}>แสดง {filtered.length} จาก {eligible.length} รายการที่มีข้อมูล (ทั้งหมด {products.length} รายการ)</div>
+                </div>
+            );
+        }
+
         function App() {
             const [currentStaff, setCurrentStaff] = useState(() => {
                 try { return JSON.parse(sessionStorage.getItem('warehouse_staff')); } catch { return null; }
@@ -2599,6 +2664,7 @@
                             <button className={'nav-tab ' + (tab === 'receiving' ? 'active' : '')} onClick={() => selectTab('receiving')}><IconIn />รับเข้า</button>
                             <button className={'nav-tab ' + (tab === 'issue' ? 'active' : '')} onClick={() => selectTab('issue')}><IconOut />เบิกออก</button>
                             <button className={'nav-tab ' + (tab === 'warehouse' ? 'active' : '')} onClick={() => selectTab('warehouse')}><IconBox />คลังสินค้า</button>
+                            <button className={'nav-tab ' + (tab === 'chemcheck' ? 'active' : '')} onClick={() => selectTab('chemcheck')}><IconFlask />ตรวจยา</button>
                             <button className={'nav-tab ' + (tab === 'transfer' ? 'active' : '')} onClick={() => selectTab('transfer')}><IconSwap />ย้ายคลัง</button>
                             <button className={'nav-tab ' + (tab === 'expiry' ? 'active' : '')} onClick={() => selectTab('expiry')}><IconAlert />ใกล้หมดอายุ{soonCount > 0 ? ' (' + soonCount + ')' : ''}</button>
                             <button className={'nav-tab ' + (tab === 'history' ? 'active' : '')} onClick={() => selectTab('history')}><IconHistory />ประวัติ</button>
@@ -2617,6 +2683,7 @@
                         {tab === 'receiving' && <Receiving {...shared} />}
                         {tab === 'issue' && <IssueStock {...shared} />}
                         {tab === 'warehouse' && <Warehouse {...shared} />}
+                        {tab === 'chemcheck' && <ChemicalCheck {...shared} />}
                         {tab === 'transfer' && <BulkTransfer {...shared} />}
                         {tab === 'po' && <PurchaseOrders {...shared} />}
                         {tab === 'expiry' && <ExpiryAlerts {...shared} />}
