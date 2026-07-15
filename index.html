@@ -211,6 +211,7 @@
         const IconUser = () => (<svg {...iconProps}><circle cx="12" cy="8.3" r="3.3" /><path d="M5 20c1-3.9 3.8-5.8 7-5.8s6 1.9 7 5.8" /></svg>);
         const IconCart = () => (<svg {...iconProps}><path d="M4 5h2l2 11h10l2-8H7" /><circle cx="10" cy="19" r="1.3" fill="currentColor" stroke="none" /><circle cx="17" cy="19" r="1.3" fill="currentColor" stroke="none" /></svg>);
         const IconTruck = () => (<svg {...iconProps}><rect x="2.5" y="7.5" width="11" height="9" rx="1.5" /><path d="M13.5 10.5h4l3 3.5v2.5h-7z" /><circle cx="7" cy="18.5" r="1.6" /><circle cx="16.5" cy="18.5" r="1.6" /></svg>);
+        const IconChart = () => (<svg {...iconProps}><path d="M4 20V10M12 20V4M20 20v-7" /><path d="M2.5 20h19" /></svg>);
         const IconLogo = () => (<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="white" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3.5l8 4v9l-8 4-8-4v-9l8-4z" /><path d="M4 7.5l8 4 8-4M12 11.5v9" /></svg>);
 
         function Home({ products, locations, stock, movements }) {
@@ -1180,6 +1181,151 @@
                         </div>
                     ))}
                     {!loadingList && filtered.length === 0 && <div style={{color: 'var(--text-muted)', textAlign: 'center', padding: '20px'}}>ยังไม่มีใบสั่งซื้อ</div>}
+                </div>
+            );
+        }
+
+        const THAI_MONTHS = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
+        const formatMonthYm = (ym) => {
+            const [y, m] = ym.split('-').map(Number);
+            return THAI_MONTHS[m - 1] + ' ' + (y + 543);
+        };
+        const formatBaht = (n) => n.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' บาท';
+
+        function PurchasingStats({ products }) {
+            const [receipts, setReceipts] = useState([]);
+            const [items, setItems] = useState([]);
+            const [loading, setLoading] = useState(true);
+            const [supplierFilter, setSupplierFilter] = useState('');
+            const [monthFilter, setMonthFilter] = useState('');
+
+            useEffect(() => {
+                (async () => {
+                    setLoading(true);
+                    const { data: r } = await client.from('purchase_receipts').select('*').eq('status', 'finalized').order('receipt_date', { ascending: false });
+                    const receiptIds = (r || []).map(x => x.id);
+                    let its = [];
+                    if (receiptIds.length > 0) {
+                        const { data } = await client.from('purchase_receipt_items').select('*').in('receipt_id', receiptIds);
+                        its = data || [];
+                    }
+                    setReceipts(r || []);
+                    setItems(its);
+                    setLoading(false);
+                })();
+            }, []);
+
+            if (loading) return <div className="loading">กำลังโหลด...</div>;
+
+            const receiptById = Object.fromEntries(receipts.map(r => [r.id, r]));
+            const rows = items.map(it => {
+                const receipt = receiptById[it.receipt_id];
+                const product = products.find(p => p.id === it.product_id);
+                const qty = (parseFloat(it.pack_qty) || 0) * (parseFloat(it.pack_size) || 1);
+                const cost = parseFloat(it.cost_per_base_unit) || 0;
+                return { ...it, receipt, product, qty, total: qty * cost };
+            }).filter(r => r.receipt);
+
+            const supplierNames = [...new Set(receipts.map(r => r.supplier_name).filter(Boolean))].sort();
+            const months = [...new Set(receipts.map(r => r.receipt_date?.slice(0, 7)).filter(Boolean))].sort().reverse();
+
+            const filteredRows = rows.filter(r => {
+                if (supplierFilter && r.receipt.supplier_name !== supplierFilter) return false;
+                if (monthFilter && r.receipt.receipt_date?.slice(0, 7) !== monthFilter) return false;
+                return true;
+            });
+
+            const grandTotal = filteredRows.reduce((s, r) => s + r.total, 0);
+            const receiptCount = new Set(filteredRows.map(r => r.receipt_id)).size;
+
+            const byProduct = {};
+            filteredRows.forEach(r => {
+                if (!byProduct[r.product_id]) byProduct[r.product_id] = { product: r.product, qty: 0, total: 0 };
+                byProduct[r.product_id].qty += r.qty;
+                byProduct[r.product_id].total += r.total;
+            });
+            const top10 = Object.values(byProduct).sort((a, b) => b.qty - a.qty).slice(0, 10);
+
+            const bySupplier = {};
+            filteredRows.forEach(r => {
+                const key = r.receipt.supplier_name || 'ไม่ระบุ';
+                bySupplier[key] = (bySupplier[key] || 0) + r.total;
+            });
+            const supplierRows = Object.entries(bySupplier).sort((a, b) => b[1] - a[1]);
+
+            const byMonth = {};
+            filteredRows.forEach(r => {
+                const m = r.receipt.receipt_date?.slice(0, 7);
+                if (!m) return;
+                byMonth[m] = (byMonth[m] || 0) + r.total;
+            });
+            const monthRows = Object.entries(byMonth).sort((a, b) => b[0].localeCompare(a[0]));
+
+            return (
+                <div>
+                    <h2>สถิติการสั่งซื้อ</h2>
+                    <div className="grid-2" style={{marginBottom: '15px'}}>
+                        <div className="form-group">
+                            <label>กรองตามผู้ขาย/ซัพพลายเออร์</label>
+                            <select value={supplierFilter} onChange={(e) => setSupplierFilter(e.target.value)}>
+                                <option value="">ทั้งหมด</option>
+                                {supplierNames.map(s => (<option key={s} value={s}>{s}</option>))}
+                            </select>
+                        </div>
+                        <div className="form-group">
+                            <label>กรองตามเดือน</label>
+                            <select value={monthFilter} onChange={(e) => setMonthFilter(e.target.value)}>
+                                <option value="">ทั้งหมด</option>
+                                {months.map(m => (<option key={m} value={m}>{formatMonthYm(m)}</option>))}
+                            </select>
+                        </div>
+                    </div>
+
+                    <div className="card" style={{textAlign: 'center', marginBottom: '20px'}}>
+                        <div style={{fontSize: '13px', color: 'var(--text-muted)'}}>
+                            ยอดซื้อรวม{supplierFilter ? ' จาก ' + supplierFilter : ''}{monthFilter ? ' เดือน ' + formatMonthYm(monthFilter) : ''}
+                        </div>
+                        <div style={{fontSize: '28px', fontWeight: 700}}>{formatBaht(grandTotal)}</div>
+                        <div style={{fontSize: '12px', color: 'var(--text-muted)'}}>{filteredRows.length} รายการสินค้า จาก {receiptCount} ใบรับสินค้า</div>
+                    </div>
+
+                    <h3 style={{marginBottom: '10px'}}>Top 10 สินค้าที่สั่งซื้อมากที่สุด (ตามจำนวน)</h3>
+                    <table>
+                        <thead><tr><th>อันดับ</th><th>สินค้า</th><th>จำนวนรวม</th><th>มูลค่ารวม</th></tr></thead>
+                        <tbody>
+                            {top10.map((r, i) => (
+                                <tr key={i}>
+                                    <td>{i + 1}</td>
+                                    <td>{r.product ? r.product.product_code + ' - ' + r.product.name : '-'}</td>
+                                    <td>{r.qty.toFixed(0)} {r.product?.unit || ''}</td>
+                                    <td>{formatBaht(r.total)}</td>
+                                </tr>
+                            ))}
+                            {top10.length === 0 && (<tr><td colSpan="4" style={{textAlign: 'center', color: 'var(--text-muted)'}}>ไม่มีข้อมูล</td></tr>)}
+                        </tbody>
+                    </table>
+
+                    <h3 style={{margin: '20px 0 10px'}}>ยอดซื้อรายเดือน</h3>
+                    <table>
+                        <thead><tr><th>เดือน</th><th>ยอดซื้อรวม</th></tr></thead>
+                        <tbody>
+                            {monthRows.map(([m, total]) => (<tr key={m}><td>{formatMonthYm(m)}</td><td>{formatBaht(total)}</td></tr>))}
+                            {monthRows.length === 0 && (<tr><td colSpan="2" style={{textAlign: 'center', color: 'var(--text-muted)'}}>ไม่มีข้อมูล</td></tr>)}
+                        </tbody>
+                    </table>
+
+                    {!supplierFilter && (
+                        <>
+                            <h3 style={{margin: '20px 0 10px'}}>ยอดซื้อแยกตามผู้ขาย/ซัพพลายเออร์</h3>
+                            <table>
+                                <thead><tr><th>ผู้ขาย/ซัพพลายเออร์</th><th>ยอดซื้อรวม</th></tr></thead>
+                                <tbody>
+                                    {supplierRows.map(([s, total]) => (<tr key={s}><td>{s}</td><td>{formatBaht(total)}</td></tr>))}
+                                    {supplierRows.length === 0 && (<tr><td colSpan="2" style={{textAlign: 'center', color: 'var(--text-muted)'}}>ไม่มีข้อมูล</td></tr>)}
+                                </tbody>
+                            </table>
+                        </>
+                    )}
                 </div>
             );
         }
@@ -2378,6 +2524,7 @@
                             <button className={'nav-tab ' + (tab === 'history' ? 'active' : '')} onClick={() => { setTab('history'); setMsg(''); }}><IconHistory />ประวัติ</button>
                             <button className={'nav-tab ' + (tab === 'locations' ? 'active' : '')} onClick={() => { setTab('locations'); setMsg(''); }}><IconPin />ที่อยู่</button>
                             <button className={'nav-tab ' + (tab === 'suppliers' ? 'active' : '')} onClick={() => { setTab('suppliers'); setMsg(''); }}><IconTruck />ผู้ผลิต</button>
+                            {currentStaff.is_admin && <button className={'nav-tab ' + (tab === 'stats' ? 'active' : '')} onClick={() => { setTab('stats'); setMsg(''); }}><IconChart />สถิติสั่งซื้อ</button>}
                             {currentStaff.is_admin && <button className={'nav-tab ' + (tab === 'staff' ? 'active' : '')} onClick={() => { setTab('staff'); setMsg(''); }}><IconUser />พนักงาน</button>}
                         </div>
                         <div style={{marginTop: 'auto', paddingTop: '16px', borderTop: '1px solid var(--border)'}}>
@@ -2396,6 +2543,7 @@
                         {tab === 'history' && <History {...shared} />}
                         {tab === 'locations' && <Locations {...shared} />}
                         {tab === 'suppliers' && <SupplierManagement {...shared} />}
+                        {tab === 'stats' && currentStaff.is_admin && <PurchasingStats {...shared} />}
                         {tab === 'staff' && currentStaff.is_admin && <StaffManagement {...shared} />}
                     </div>
                 </div>
