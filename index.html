@@ -1184,7 +1184,7 @@
             );
         }
 
-        function Warehouse({ products, locations, stock, loadData, msg, msgType, flash, staffName, isAdmin }) {
+        function Warehouse({ products, locations, stock, suppliers, loadData, msg, msgType, flash, staffName, isAdmin }) {
             const [search, setSearch] = useState('');
             const [locFilter, setLocFilter] = useState('');
             const [expandedInfo, setExpandedInfo] = useState({});
@@ -1209,12 +1209,20 @@
             const filtered = allFiltered.slice(0, displayLimit);
             useEffect(() => { setDisplayLimit(50); }, [search, locFilter]);
 
+            const syncSupplier = async (name) => {
+                if (!name) return;
+                if (!suppliers.some(s => s.name === name)) {
+                    await client.from('suppliers').insert([{ name }]).select().then(() => {}, () => {});
+                }
+            };
+
             const addProduct = async () => {
                 if (!newProd.code.trim() || !newProd.name.trim()) { flash('กรอกรหัสสินค้าและชื่อสินค้า'); return; }
                 if (products.some(p => p.product_code?.toUpperCase() === newProd.code.trim().toUpperCase())) {
                     flash('รหัสสินค้า "' + newProd.code + '" มีอยู่แล้ว'); return;
                 }
                 try {
+                    await syncSupplier(newProd.company.trim());
                     const payload = {
                         product_code: newProd.code.trim(),
                         name: newProd.name.trim(),
@@ -1266,6 +1274,7 @@
 
             const saveEdit = async (p) => {
                 try {
+                    await syncSupplier(editVals.company.trim());
                     const payload = {
                         name: editVals.name, unit: editVals.unit, price: editVals.price === '' ? null : parseFloat(editVals.price),
                         pack_unit: editVals.packUnit.trim() || null, pack_size: editVals.packSize === '' ? null : parseFloat(editVals.packSize),
