@@ -1192,6 +1192,7 @@
             const [editMode, setEditMode] = useState('full');
             const [editVals, setEditVals] = useState({});
             const [showAdd, setShowAdd] = useState(false);
+            const [displayLimit, setDisplayLimit] = useState(50);
             const [newProd, setNewProd] = useState({ code: '', name: '', unit: '', price: '', cost: '', wholesalePrice: '', category: '', company: '', packUnit: '', packSize: '', activeIngredient: '', usageInfo: '', restrictions: '' });
             const companyOptions = [...new Set(products.map(p => p.company).filter(Boolean))].sort();
             const matchesSearch = (p) =>
@@ -1201,10 +1202,12 @@
                 p.category?.includes(search) ||
                 p.active_ingredient?.includes(search) ||
                 p.usage_info?.includes(search);
-            const filtered = (locFilter
+            const allFiltered = (locFilter
                 ? products.filter(p => stock.some(s => s.product_id === p.id && s.location_id === locFilter && parseFloat(s.quantity) > 0))
                 : products
-            ).filter(matchesSearch).slice(0, 50);
+            ).filter(matchesSearch);
+            const filtered = allFiltered.slice(0, displayLimit);
+            useEffect(() => { setDisplayLimit(50); }, [search, locFilter]);
 
             const addProduct = async () => {
                 if (!newProd.code.trim() || !newProd.name.trim()) { flash('กรอกรหัสสินค้าและชื่อสินค้า'); return; }
@@ -1552,6 +1555,15 @@
                                 })}
                             </tbody>
                         </table>
+                    </div>
+                    <div style={{textAlign: 'center', margin: '15px 0', color: 'var(--text-muted)', fontSize: '13px'}}>
+                        แสดง {filtered.length} จาก {allFiltered.length} รายการ
+                        {allFiltered.length > filtered.length && (
+                            <div style={{marginTop: '8px'}}>
+                                <button className="secondary" onClick={() => setDisplayLimit(displayLimit + 50)}>โหลดเพิ่มเติม (+50)</button>
+                                <button className="secondary" style={{marginLeft: '8px'}} onClick={() => setDisplayLimit(allFiltered.length)}>โหลดทั้งหมด</button>
+                            </div>
+                        )}
                     </div>
                 </div>
             );
