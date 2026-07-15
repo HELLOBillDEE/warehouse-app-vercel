@@ -280,6 +280,13 @@
             return 'PR' + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + pad(d.getHours()) + pad(d.getMinutes()) + pad(d.getSeconds()) + Math.floor(Math.random() * 90 + 10);
         };
 
+        const CHEMICAL_GROUPS = [
+            { value: 'insecticide', label: 'สารกำจัดแมลง', bg: '#111827', color: '#f9fafb' },
+            { value: 'fungicide', label: 'สารป้องกันโรคพืช', bg: '#fde68a', color: '#78350f' },
+            { value: 'herbicide', label: 'สารกำจัดวัชพืช', bg: '#fecaca', color: '#7f1d1d' },
+            { value: 'fertilizer', label: 'อาหารเสริมพืช', bg: '#bbf7d0', color: '#14532d' },
+        ];
+        const chemGroupInfo = (v) => CHEMICAL_GROUPS.find(g => g.value === v);
         const PACK_UNITS = ['ลัง', 'กล่อง', 'แพ็ค', 'มัด', 'กระสอบ', 'ถัง'];
         const BASE_UNITS = ['ชิ้น', 'ขวด', 'ซอง', 'ถุง', 'กระป๋อง', 'หลอด', 'อัน', 'กก.', 'ลิตร'];
 
@@ -1404,7 +1411,10 @@
             const [editVals, setEditVals] = useState({});
             const [showAdd, setShowAdd] = useState(false);
             const [displayLimit, setDisplayLimit] = useState(50);
-            const [newProd, setNewProd] = useState({ code: '', name: '', unit: '', price: '', cost: '', wholesalePrice: '', category: '', company: '', packUnit: '', packSize: '', activeIngredient: '', usageInfo: '', restrictions: '' });
+            const [newProd, setNewProd] = useState({ code: '', name: '', unit: '', price: '', cost: '', wholesalePrice: '', category: '', company: '', packUnit: '', packSize: '', activeIngredient: '', usageInfo: '', restrictions: '', chemicalGroup: '' });
+            const [selectedIds, setSelectedIds] = useState({});
+            const [bulkVals, setBulkVals] = useState({ category: '', chemicalGroup: '', price: '', company: '' });
+            const [bulkSaving, setBulkSaving] = useState(false);
             const companyOptions = [...new Set(suppliers.map(s => s.name).filter(Boolean))].sort();
             const matchesSearch = (p) =>
                 p.product_code?.includes(search.toUpperCase()) ||
@@ -1445,7 +1455,8 @@
                         pack_size: newProd.packSize === '' ? null : parseFloat(newProd.packSize),
                         active_ingredient: newProd.activeIngredient.trim() || null,
                         usage_info: newProd.usageInfo.trim() || null,
-                        restrictions: newProd.restrictions.trim() || null
+                        restrictions: newProd.restrictions.trim() || null,
+                        chemical_group: newProd.chemicalGroup || null
                     };
                     if (isAdmin) {
                         payload.cost = newProd.cost === '' ? null : parseFloat(newProd.cost);
@@ -1453,7 +1464,7 @@
                     }
                     await client.from('products').insert([payload]);
                     flash('เพิ่มสินค้าใหม่สำเร็จ', 'success');
-                    setNewProd({ code: '', name: '', unit: '', price: '', cost: '', wholesalePrice: '', category: '', company: '', packUnit: '', packSize: '', activeIngredient: '', usageInfo: '', restrictions: '' });
+                    setNewProd({ code: '', name: '', unit: '', price: '', cost: '', wholesalePrice: '', category: '', company: '', packUnit: '', packSize: '', activeIngredient: '', usageInfo: '', restrictions: '', chemicalGroup: '' });
                     setShowAdd(false);
                     await loadData();
                 } catch (err) {
@@ -1477,6 +1488,7 @@
                     name: p.name, unit: p.unit || '', price: p.price || '', cost: p.cost || '', wholesalePrice: p.wholesale_price || '',
                     packUnit: p.pack_unit || '', packSize: p.pack_size || '', category: p.category || '', company: p.company || '',
                     activeIngredient: p.active_ingredient || '', usageInfo: p.usage_info || '', restrictions: p.restrictions || '',
+                    chemicalGroup: p.chemical_group || '',
                     qtyByLoc, lotByLoc, expiryByLoc
                 });
             };
@@ -1491,7 +1503,7 @@
                         pack_unit: editVals.packUnit.trim() || null, pack_size: editVals.packSize === '' ? null : parseFloat(editVals.packSize),
                         category: editVals.category.trim() || null, company: editVals.company.trim() || null,
                         active_ingredient: editVals.activeIngredient.trim() || null, usage_info: editVals.usageInfo.trim() || null,
-                        restrictions: editVals.restrictions.trim() || null
+                        restrictions: editVals.restrictions.trim() || null, chemical_group: editVals.chemicalGroup || null
                     };
                     if (isAdmin) {
                         payload.cost = editVals.cost === '' ? null : parseFloat(editVals.cost);
@@ -1533,6 +1545,33 @@
                     await loadData();
                 } catch (err) {
                     flash('ลบไม่ได้ เนื่องจากสินค้านี้มีประวัติรับเข้า/สั่งซื้อ/LOT ผูกอยู่', 'error');
+                }
+            };
+
+            const selectedCount = Object.keys(selectedIds).length;
+            const clearSelection = () => { setSelectedIds({}); setBulkVals({ category: '', chemicalGroup: '', price: '', company: '' }); };
+
+            const bulkApply = async () => {
+                const ids = Object.keys(selectedIds);
+                if (ids.length === 0) return;
+                const payload = {};
+                if (bulkVals.category.trim()) payload.category = bulkVals.category.trim();
+                if (bulkVals.chemicalGroup) payload.chemical_group = bulkVals.chemicalGroup;
+                if (bulkVals.price !== '') payload.price = parseFloat(bulkVals.price);
+                if (bulkVals.company.trim()) payload.company = bulkVals.company.trim();
+                if (Object.keys(payload).length === 0) { flash('กรอกอย่างน้อย 1 ช่องที่ต้องการแก้ไข'); return; }
+                setBulkSaving(true);
+                try {
+                    if (payload.company) await syncSupplier(payload.company);
+                    const { error } = await client.from('products').update(payload).in('id', ids);
+                    if (error) throw error;
+                    flash('แก้ไข ' + ids.length + ' รายการสำเร็จ', 'success');
+                    clearSelection();
+                    await loadData();
+                } catch (err) {
+                    flash('Error: ' + err.message, 'error');
+                } finally {
+                    setBulkSaving(false);
                 }
             };
 
@@ -1584,6 +1623,13 @@
                                 </div>
                             </div>
                             <div className="form-group">
+                                <label>แท็กประเภทสาร (ถ้ามี)</label>
+                                <select value={newProd.chemicalGroup} onChange={(e) => setNewProd({...newProd, chemicalGroup: e.target.value})}>
+                                    <option value="">-- ไม่ระบุ --</option>
+                                    {CHEMICAL_GROUPS.map(g => (<option key={g.value} value={g.value}>{g.label}</option>))}
+                                </select>
+                            </div>
+                            <div className="form-group">
                                 <label>ชื่อทางการ/สารเคมี (ถ้ามี)</label>
                                 <input type="text" value={newProd.activeIngredient} onChange={(e) => setNewProd({...newProd, activeIngredient: e.target.value})} />
                             </div>
@@ -1617,10 +1663,47 @@
                             {locations.map(l => (<option key={l.id} value={l.id}>{l.name}</option>))}
                         </select>
                     </div>
+                    {selectedCount > 0 && (
+                        <div style={{border: '1.5px solid var(--primary)', borderRadius: '10px', padding: '12px', marginBottom: '15px', background: 'var(--bg)'}}>
+                            <div style={{fontWeight: 600, marginBottom: '10px'}}>แก้ไขพร้อมกัน {selectedCount} รายการ</div>
+                            <div className="grid-2" style={{marginBottom: '10px'}}>
+                                <div className="form-group" style={{marginBottom: 0}}>
+                                    <label>หมวดหมู่ (เว้นว่างถ้าไม่แก้)</label>
+                                    <input type="text" value={bulkVals.category} onChange={(e) => setBulkVals({...bulkVals, category: e.target.value})} />
+                                </div>
+                                <div className="form-group" style={{marginBottom: 0}}>
+                                    <label>แท็กประเภทสาร (เว้นว่างถ้าไม่แก้)</label>
+                                    <select value={bulkVals.chemicalGroup} onChange={(e) => setBulkVals({...bulkVals, chemicalGroup: e.target.value})}>
+                                        <option value="">-- ไม่แก้ --</option>
+                                        {CHEMICAL_GROUPS.map(g => (<option key={g.value} value={g.value}>{g.label}</option>))}
+                                    </select>
+                                </div>
+                            </div>
+                            <div className="grid-2" style={{marginBottom: '10px'}}>
+                                <div className="form-group" style={{marginBottom: 0}}>
+                                    <label>ราคา (เว้นว่างถ้าไม่แก้)</label>
+                                    <input type="number" value={bulkVals.price} onChange={(e) => setBulkVals({...bulkVals, price: e.target.value})} />
+                                </div>
+                                <div className="form-group" style={{marginBottom: 0}}>
+                                    <label>บริษัท/แบรนด์ (เว้นว่างถ้าไม่แก้)</label>
+                                    <UnitInput value={bulkVals.company} onChange={(v) => setBulkVals({...bulkVals, company: v})} options={companyOptions} placeholder="-- เลือกบริษัท/แบรนด์ --" />
+                                </div>
+                            </div>
+                            <div className="row-actions">
+                                <button onClick={bulkApply} disabled={bulkSaving}>{bulkSaving ? 'กำลังบันทึก...' : 'ใช้กับที่เลือก'}</button>
+                                <button className="secondary" onClick={clearSelection}>ยกเลิกการเลือก</button>
+                            </div>
+                        </div>
+                    )}
                     <div style={{overflowX: 'auto'}}>
                         <table>
                             <thead>
                                 <tr>
+                                    <th><input type="checkbox" checked={filtered.length > 0 && filtered.every(p => selectedIds[p.id])} onChange={(e) => {
+                                        const next = {...selectedIds};
+                                        filtered.forEach(p => { if (e.target.checked) next[p.id] = true; else delete next[p.id]; });
+                                        setSelectedIds(next);
+                                    }} /></th>
                                     <th>สินค้า</th><th>บริษัท</th><th>หมวดหมู่</th><th>{locFilter ? 'คงเหลือ' : 'คงเหลือรวม'}</th><th>หน่วย</th><th>ราคา</th><th>รายละเอียดสถานที่</th><th style={{position: 'sticky', right: 0, background: 'var(--card, #fff)', boxShadow: '-2px 0 4px rgba(0,0,0,0.08)'}}>จัดการ</th>
                                 </tr>
                             </thead>
@@ -1633,9 +1716,17 @@
                                     return (
                                         <React.Fragment key={p.id}>
                                             <tr>
+                                                <td><input type="checkbox" checked={!!selectedIds[p.id]} onChange={(e) => {
+                                                    const next = {...selectedIds};
+                                                    if (e.target.checked) next[p.id] = true; else delete next[p.id];
+                                                    setSelectedIds(next);
+                                                }} /></td>
                                                 <td>
                                                     <strong>{p.product_code}</strong><br />{p.name}
                                                     {p.pack_unit && p.pack_size ? <div style={{fontSize: '11px', color: 'var(--text-muted)'}}>หน่วยบรรจุ: {formatUnit(p)}</div> : null}
+                                                    {p.chemical_group ? (() => { const g = chemGroupInfo(p.chemical_group); return g ? (
+                                                        <span className="badge" style={{background: g.bg, color: g.color, marginTop: '4px', display: 'inline-block'}}>{g.label}</span>
+                                                    ) : null; })() : null}
                                                     {p.active_ingredient ? (
                                                         <span className="badge" style={{background: '#e1f0ff', color: '#0b5394', marginTop: '4px', display: 'inline-block'}} title={'สารเดียวกัน (ใช้แทนกันได้): ' + p.active_ingredient}>
                                                             🧪 {p.active_ingredient}
@@ -1686,7 +1777,7 @@
                                             </tr>
                                             {isEditing && (
                                                 <tr>
-                                                    <td colSpan="8">
+                                                    <td colSpan="9">
                                                         <h3 style={{marginBottom: '10px'}}>{editMode === 'quick' ? 'แก้ไขจำนวนสต็อก (ด่วน)' : 'แก้ไขสินค้า'}</h3>
                                                         {editMode === 'full' && (<>
                                                         <div className="grid-3">
@@ -1722,6 +1813,13 @@
                                                                 <label>บริษัท/แบรนด์</label>
                                                                 <UnitInput value={editVals.company} onChange={(v) => setEditVals({...editVals, company: v})} options={companyOptions} placeholder="-- เลือกบริษัท/แบรนด์ --" />
                                                             </div>
+                                                        </div>
+                                                        <div className="form-group">
+                                                            <label>แท็กประเภทสาร</label>
+                                                            <select value={editVals.chemicalGroup || ''} onChange={(e) => setEditVals({...editVals, chemicalGroup: e.target.value})}>
+                                                                <option value="">-- ไม่ระบุ --</option>
+                                                                {CHEMICAL_GROUPS.map(g => (<option key={g.value} value={g.value}>{g.label}</option>))}
+                                                            </select>
                                                         </div>
                                                         <div className="form-group">
                                                             <label>ชื่อทางการ/สารเคมี</label>
@@ -2495,19 +2593,28 @@
             );
         }
 
-        function ChemicalCheck({ products }) {
+        function ChemicalCheck({ products, stock, locations }) {
             const [search, setSearch] = useState('');
+            const [groupFilter, setGroupFilter] = useState('');
             const [expanded, setExpanded] = useState({});
 
-            const eligible = products.filter(p => p.active_ingredient || p.usage_info || p.restrictions);
+            const eligible = products.filter(p => p.active_ingredient || p.usage_info || p.restrictions || p.chemical_group);
             const q = search.trim();
-            const filtered = eligible.filter(p =>
-                !q ||
-                p.name?.includes(q) ||
-                p.product_code?.includes(q.toUpperCase()) ||
-                p.active_ingredient?.includes(q) ||
-                p.usage_info?.includes(q)
-            );
+            const filtered = eligible
+                .filter(p => !groupFilter || p.chemical_group === groupFilter)
+                .filter(p =>
+                    !q ||
+                    p.name?.includes(q) ||
+                    p.product_code?.includes(q.toUpperCase()) ||
+                    p.active_ingredient?.includes(q) ||
+                    p.usage_info?.includes(q)
+                )
+                .sort((a, b) => (a.chemical_group || 'zzz').localeCompare(b.chemical_group || 'zzz'));
+
+            const locsFor = (productId) => stock
+                .filter(s => s.product_id === productId && parseFloat(s.quantity) > 0)
+                .map(s => (locations.find(l => l.id === s.location_id) || {}).name)
+                .filter(Boolean);
 
             return (
                 <div>
@@ -2515,21 +2622,35 @@
                     <div style={{color: 'var(--text-muted)', fontSize: '13px', marginBottom: '14px'}}>
                         แสดงเฉพาะสินค้าที่มีข้อมูลสารเคมี/สรรพคุณ/ข้อจำกัดการใช้ — ใช้ค้นหายาที่ใช้สารตัวเดียวกันเพื่อหาสินค้าทดแทน
                     </div>
-                    <input type="text" placeholder="ค้นหา (ชื่อ/รหัส/ชื่อทางการ/สรรพคุณ)..." value={search} onChange={(e) => setSearch(e.target.value)} style={{marginBottom: '16px', maxWidth: '420px'}} />
+                    <div className="grid-2" style={{marginBottom: '16px', maxWidth: '620px'}}>
+                        <input type="text" placeholder="ค้นหา (ชื่อ/รหัส/ชื่อทางการ/สรรพคุณ)..." value={search} onChange={(e) => setSearch(e.target.value)} />
+                        <select value={groupFilter} onChange={(e) => setGroupFilter(e.target.value)}>
+                            <option value="">ทุกแท็ก</option>
+                            {CHEMICAL_GROUPS.map(g => (<option key={g.value} value={g.value}>{g.label}</option>))}
+                        </select>
+                    </div>
                     <div style={{overflowX: 'auto'}}>
                         <table>
                             <thead>
                                 <tr>
                                     <th>สินค้า</th>
+                                    <th>แท็ก</th>
                                     <th>ชื่อทางการ/สารเคมี</th>
                                     <th>สรรพคุณ / ใช้รักษา-กำจัดอะไร</th>
                                     <th>ข้อจำกัดการใช้</th>
+                                    <th>สถานที่จัดเก็บ</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {filtered.map(p => (
+                                {filtered.map(p => {
+                                    const g = chemGroupInfo(p.chemical_group);
+                                    const locs = locsFor(p.id);
+                                    return (
                                     <tr key={p.id}>
                                         <td><strong>{p.product_code}</strong><br />{p.name}{p.company ? <div style={{fontSize: '11px', color: 'var(--text-muted)'}}>{p.company}</div> : null}</td>
+                                        <td>
+                                            {g ? <span className="badge" style={{background: g.bg, color: g.color}}>{g.label}</span> : '-'}
+                                        </td>
                                         <td>
                                             {p.active_ingredient ? <span className="badge" style={{background: '#e1f0ff', color: '#0b5394'}}>🧪 {p.active_ingredient}</span> : '-'}
                                         </td>
@@ -2548,8 +2669,12 @@
                                         <td style={{maxWidth: '220px'}}>
                                             {p.restrictions ? <span style={{color: '#c0392b', whiteSpace: 'pre-line'}}>⚠️ {p.restrictions}</span> : '-'}
                                         </td>
+                                        <td style={{fontSize: '12px'}}>
+                                            {locs.length > 0 ? locs.map(n => '📍 ' + n).join(', ') : <span style={{color: 'var(--text-muted)'}}>ยังไม่มีสต็อก</span>}
+                                        </td>
                                     </tr>
-                                ))}
+                                    );
+                                })}
                             </tbody>
                         </table>
                     </div>
